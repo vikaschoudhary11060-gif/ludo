@@ -28,21 +28,25 @@ import { getSettings, connect, ensureSeed } from './lib/db.js';
 const app = express();
 const server = http.createServer(app);
 
-const configuredOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+const defaultOrigins = ['http://localhost:5173', 'http://localhost:4000', 'https://ludo-ludo19.vercel.app'];
+const configuredOrigins = (process.env.CORS_ORIGIN || '')
   .split(',').map(s => s.trim()).filter(Boolean);
+const ORIGINS = [...new Set([...defaultOrigins, ...configuredOrigins])];
+
+const checkOrigin = (origin, callback) => {
+  if (!origin) return callback(null, true);
+  try {
+    const hostname = new URL(origin).hostname;
+    if (ORIGINS.includes(origin) || hostname.endsWith('.vercel.app') || hostname === 'localhost') {
+      return callback(null, true);
+    }
+  } catch {}
+  return callback(null, true);
+};
 
 app.set('trust proxy', 1);
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    if (configuredOrigins.includes(origin) || /\.vercel\.app$/.test(new URL(origin).hostname)) {
-      return callback(null, true);
-    }
-    return callback(null, true);
-  },
-  credentials: true
-}));
+app.use(cors({ origin: checkOrigin, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 app.use(rateLimit({ windowMs: 60_000, max: 240 }));
 
@@ -82,7 +86,7 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'Something went wrong on our side.' });
 });
 
-const io = new SocketServer(server, { cors: { origin: ORIGINS, credentials: true } });
+const io = new SocketServer(server, { cors: { origin: checkOrigin, credentials: true } });
 app.set('io', io);
 attachRealtime(io, app);
 
@@ -91,7 +95,7 @@ await connect();
 await ensureSeed();
 server.listen(PORT, () => {
   console.log(`Khelbro API listening on http://localhost:${PORT}`);
-  console.log(`CORS origins: ${ORIGINS.join(', ')}`);
+  console.log(`CORS origins: ${ORIGINS.join(', ')} (and all *.vercel.app)`);
   if (process.env.EXPOSE_OTP === 'true') console.log('EXPOSE_OTP is on — dev only.');
 });
 
