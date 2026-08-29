@@ -13,12 +13,13 @@
   let battle = null, claims = [], chosen = null, commission = 0.05;
 
   const STATUS = {
-    open:      ['Waiting for an opponent to join',        'bg-gold/20 text-gold-deep'],
-    waiting:   ['Opponent joined — waiting for the room code', 'bg-brand/15 text-brand'],
-    running:   ['Match in progress',                      'bg-cta/15 text-cta-deep'],
-    completed: ['Battle settled',                         'bg-surface-page text-muted-dark'],
-    cancelled: ['Battle cancelled',                       'bg-live/15 text-live'],
-    disputed:  ['Result under review by support',         'bg-live/15 text-live'],
+    open:      ['Waiting for an opponent to join',             'bg-gold/20 text-gold-deep'],
+    requested: ['Opponent requested to join',                  'bg-brand/15 text-brand'],
+    waiting:   ['Host accepted — waiting for room code',       'bg-brand/15 text-brand'],
+    running:   ['Match in progress',                           'bg-cta/15 text-cta-deep'],
+    completed: ['Battle settled',                              'bg-surface-page text-muted-dark'],
+    cancelled: ['Battle cancelled',                            'bg-live/15 text-live'],
+    disputed:  ['Result under review by support',              'bg-live/15 text-live'],
   };
 
   const payoutFor = amt => Math.round(amt * 2 * (1 - commission));
@@ -39,13 +40,17 @@
 
     const [text, cls] = STATUS[battle.status] || STATUS.open;
     const status = $('#b-status');
-    status.textContent = text;
+    status.textContent = isAcceptor() && battle.status === 'requested'
+      ? 'Requested to join — waiting for host'
+      : isCreator() && battle.status === 'requested'
+      ? 'Opponent wants to join — accept request'
+      : text;
     status.className = 'rounded-tile px-3 py-2.5 text-center text-body-sm font-bold ' + cls;
 
     const settled = ['completed', 'cancelled'].includes(battle.status);
     const canSet = isCreator() && battle.status === 'waiting';
 
-    $('#room-section').hidden = settled;
+    $('#room-section').hidden = settled || battle.status === 'requested' || battle.status === 'open';
     $('#room-form').hidden = !canSet;
     $('#room-display').hidden = !battle.roomCode;
     if (battle.roomCode) $('#room-code').textContent = battle.roomCode;
@@ -54,7 +59,21 @@
       canSet ? 'Create a room in your Ludo app, then paste its 8-digit code here.' :
       battle.roomCode ? 'Open your Ludo app and join this room code.' :
       battle.status === 'open' ? 'The code appears once an opponent joins.' :
+      battle.status === 'requested' ? 'Accept opponent request to proceed with room code.' :
       'Waiting for the creator to set the room code.';
+
+    // Requested state panels
+    const isReq = battle.status === 'requested';
+    if ($('#request-section')) {
+      $('#request-section').hidden = !(isCreator() && isReq);
+      if (isCreator() && isReq && $('#req-title')) {
+        $('#req-title').textContent = `${battle.acceptor ? battle.acceptor.name : 'Opponent'} wants to join!`;
+        $('#req-desc').textContent = `Accept to lock the ₹${battle.amount} stake from both accounts and start the match.`;
+      }
+    }
+    if ($('#opponent-pending-section')) {
+      $('#opponent-pending-section').hidden = !(isAcceptor() && isReq);
+    }
 
     // Result panel: only while running, only for the two players, only once
     const mine = myClaim();
@@ -113,8 +132,6 @@
 
     K.watchBattle(id);
 
-    // The value of notifications is obvious here — the user is waiting on
-    // an opponent or a room code — so this is where we ask.
     if (window.KhelbroPush && (isCreator() || isAcceptor())) {
       setTimeout(() => KhelbroPush.offer('We\'ll tell you when your opponent joins or the room code is set.'), 2500);
     }
@@ -130,6 +147,35 @@
       K.refresh().then(K.paint);                // balances may have moved
     });
     window.addEventListener('beforeunload', () => K.leaveBattle(id));
+
+    // Accept / Reject request buttons for host
+    if ($('#accept-request-btn')) {
+      $('#accept-request-btn').addEventListener('click', e => busy(e.currentTarget, 'Accepting', async () => {
+        try {
+          await Api.battles.acceptRequest(id);
+          toast('Challenge request accepted! Enter room code.', 'success');
+          await load(); await K.refresh(); K.paint();
+        } catch (err) { toast(err.message, 'error'); }
+      }));
+    }
+    if ($('#reject-request-btn')) {
+      $('#reject-request-btn').addEventListener('click', e => busy(e.currentTarget, 'Declining', async () => {
+        try {
+          await Api.battles.rejectRequest(id);
+          toast('Request declined. Battle returned to lobby.', 'info');
+          await load();
+        } catch (err) { toast(err.message, 'error'); }
+      }));
+    }
+    if ($('#cancel-my-request-btn')) {
+      $('#cancel-my-request-btn').addEventListener('click', e => busy(e.currentTarget, 'Cancelling', async () => {
+        try {
+          await Api.request(`/battles/${id}/cancel-request`, { method: 'POST' });
+          toast('Join request withdrawn', 'info');
+          location.href = 'battles.html?mode=' + (battle ? battle.mode : 'lite');
+        } catch (err) { toast(err.message, 'error'); }
+      }));
+    }
 
     $('#room-input').addEventListener('input', e => {
       e.target.value = e.target.value.replace(/\D/g, '').slice(0, 8);
@@ -173,8 +219,6 @@
       const btn = $('#submit-result');
       btn.disabled = true; btn.textContent = 'Submitting…';
       try {
-        // Upload the image first; the claim stores the stored path, so support
-        // can actually look at the evidence when a result is disputed.
         let proofUrl;
         if (proofFile) {
           $('#proof-status').textContent = 'Uploading screenshot…';

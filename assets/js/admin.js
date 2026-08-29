@@ -280,8 +280,9 @@
         <table class="rtable w-full border-collapse text-body-sm">
           <thead><tr class="bg-accent-head text-left text-brand-dark">
             <th class="px-3 py-2.5 font-bold">Player</th><th class="px-3 py-2.5 font-bold">Amount</th>
-            <th class="px-3 py-2.5 font-bold">UTR</th><th class="px-3 py-2.5 font-bold">Status</th>
-            <th class="px-3 py-2.5 font-bold">When</th><th class="px-3 py-2.5"></th>
+            <th class="px-3 py-2.5 font-bold">UTR</th><th class="px-3 py-2.5 font-bold">Proof</th>
+            <th class="px-3 py-2.5 font-bold">Status</th><th class="px-3 py-2.5 font-bold">When</th>
+            <th class="px-3 py-2.5"></th>
           </tr></thead>
           <tbody class="divide-y divide-line">
             ${requests.map(d => `<tr class="hover:bg-surface-page">
@@ -289,6 +290,7 @@
                   <span class="block text-meta text-muted">${esc(d.phone)}</span></td>
               <td data-label="Amount" class="px-3 py-2.5 font-black text-ink">${money(d.amount)}</td>
               <td data-label="UTR" class="px-3 py-2.5 font-mono text-[11px]">${esc(d.utr)}</td>
+              <td data-label="Proof" class="px-3 py-2.5">${shot(d.proof)}</td>
               <td data-label="Status" class="px-3 py-2.5">${pill(d.status)}</td>
               <td data-label="When" class="px-3 py-2.5 text-muted">${when(d.created_at)}</td>
               <td data-label="" class="rtable-actions px-3 py-2.5 text-right">${d.status === 'pending' ? `

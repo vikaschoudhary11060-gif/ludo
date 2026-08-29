@@ -19,10 +19,13 @@
   function openCard(b) {
     const me = K.state.user;
     const mine = me && b.creator && b.creator.id === me.id;
+    const requested = me && b.acceptor && b.acceptor.id === me.id;
     const action = mine
       ? `<button class="inline-flex h-[30px] shrink-0 items-center rounded-[5px] border border-live px-[18px]
                         text-[10.5px] font-bold uppercase text-live transition hover:bg-live hover:text-white"
                  type="button" data-cancel="${b.id}">Cancel</button>`
+      : requested
+      ? `<a class="btn-play shrink-0 !bg-brand text-white text-center" href="battle.html?id=${b.id}">Requested</a>`
       : `<button class="btn-play shrink-0" type="button" data-play="${b.id}">Play</button>`;
     return `<li class="rounded-[5px] border border-line bg-surface" data-battle="${b.id}">
       <div class="flex h-[30px] items-center border-b border-accent-hair px-2.5">
@@ -135,7 +138,7 @@
         await busy(play, '', async () => {
           try {
             const { battle } = await Api.battles.accept(play.dataset.play);
-            toast('Battle joined', 'success');
+            toast('Request sent to host — waiting for acceptance', 'info');
             location.href = 'battle.html?id=' + battle.id;
           } catch (err) { toast(err.message, 'error'); load(); }
         });

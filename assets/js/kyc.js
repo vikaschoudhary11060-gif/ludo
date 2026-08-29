@@ -58,21 +58,30 @@
 
     $('#kyc-form').addEventListener('submit', async e => {
       e.preventDefault();
-      const docs = ['#doc-front','#doc-back','#doc-selfie'].every(s => $(s).files.length);
-      $('#doc-err').classList.toggle('hidden', docs);
-      if (!docs) { toast('Attach all three documents', 'error'); return $('#doc-front').focus(); }
+      const frontFile = $('#doc-front').files[0];
+      const backFile = $('#doc-back').files[0];
+      const selfieFile = $('#doc-selfie').files[0];
+      const hasDocs = frontFile && backFile && selfieFile;
+      $('#doc-err').classList.toggle('hidden', !!hasDocs);
+      if (!hasDocs) { toast('Attach all three documents', 'error'); return $('#doc-front').focus(); }
+
       const submitBtn = e.target.querySelector('button[type=submit]');
-      await busy(submitBtn, 'Submitting', async () => {
-      try {
-        await Api.users.submitKyc({
-          legalName: $('#kyc-name').value.trim(),
-          dob: $('#kyc-dob').value,
-          idNumber: $('#kyc-id').value.trim(),
-        });
-        toast('Documents submitted — KYC pending review', 'success');
-        await K.refresh();
-        setTimeout(() => location.reload(), 700);
-      } catch (err) { toast(err.message, 'error'); }
+      await busy(submitBtn, 'Uploading', async () => {
+        try {
+          await Promise.all([
+            Api.uploads.kyc('front', frontFile),
+            Api.uploads.kyc('back', backFile),
+            Api.uploads.kyc('selfie', selfieFile),
+          ]);
+          await Api.users.submitKyc({
+            legalName: $('#kyc-name').value.trim(),
+            dob: $('#kyc-dob').value,
+            idNumber: $('#kyc-id').value.trim(),
+          });
+          toast('Documents submitted — KYC pending review', 'success');
+          await K.refresh();
+          setTimeout(() => location.reload(), 700);
+        } catch (err) { toast(err.message, 'error'); }
       });
     });
   });
