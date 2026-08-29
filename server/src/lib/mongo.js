@@ -11,8 +11,13 @@
    ============================================================ */
 import { MongoClient } from 'mongodb';
 
-const URI = process.env.MONGO_URI;
-if (!URI) throw new Error('MONGO_URI is not set.');
+const URI = (process.env.MONGO_URI || process.env.MONGODB_URI || process.env.DATABASE_URL || '').trim();
+if (!URI) {
+  console.error('❌ Missing MongoDB connection string!');
+  console.error('Please set MONGO_URI in your environment variables.');
+  console.error('Available env variables:', Object.keys(process.env).filter(k => !k.startsWith('npm_') && !k.startsWith('LESS')));
+  throw new Error('MONGO_URI is not set. Please add MONGO_URI to your environment variables on Render.');
+}
 
 const client = new MongoClient(URI, { maxPoolSize: 20 });
 let database = null;
