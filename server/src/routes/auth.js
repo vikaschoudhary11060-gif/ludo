@@ -2,7 +2,7 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { col, nextId, now, publicUser } from '../lib/db.js';
+import { col, nextId, now, publicUser, notify } from '../lib/db.js';
 import { sign, requireAuth } from '../lib/auth.js';
 import { OTP_TTL_MS, OTP_MAX_ATTEMPTS } from '../lib/config.js';
 
@@ -56,24 +56,35 @@ router.post('/verify-otp', async (req, res) => {
   let isNew = false;
   if (!user) {
     isNew = true;
-    const referrer = referralCode
-      ? await col('users').findOne({ referral_code: referralCode.toUpperCase() }, { projection: { id: 1 } })
-      : null;
+    const rawRef = String(referralCode || '').trim();
+    let referrer = null;
+    if (rawRef) {
+      const escaped = rawRef.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      referrer = await col('users').findOne(
+        { referral_code: { $regex: new RegExp('^' + escaped + '$', 'i') } },
+        { projection: { id: 1, name: 1 } }
+      );
+    }
+
     const id = await nextId('users');
     user = {
       id, phone, name: 'Player' + phone.slice(-4), avatar: 0, email: null,
       avatar_url: null, email_verified: 0, kyc_status: 'none', kyc_method: null,
       kyc_reference: null, kyc_masked: null, kyc_dob: null, legal_name: null,
-      referral_code: makeReferralCode(phone), referred_by: referrer?.id ?? null,
+      referral_code: makeReferralCode(phone), referred_by: (referrer && referrer.id !== id) ? referrer.id : null,
       banned: 0, session_epoch: 0, created_at: now(),
     };
     await col('users').insertOne(user);
     await col('wallets').insertOne({ user_id: id, deposit: 0, winnings: 0, referral: 0 });
-    if (referrer) {
+
+    if (referrer && referrer.id !== id) {
       await col('referrals').updateOne(
         { referrer_id: referrer.id, referee_id: id },
         { $setOnInsert: { referrer_id: referrer.id, referee_id: id, earned: 0, created_at: now() } },
-        { upsert: true });
+        { upsert: true }
+      );
+      await notify(referrer.id, 'New Referral Joined! 🎉', `${user.name} registered using your referral code.`);
+      await notify(id, 'Welcome to Khelbro! 🎁', `You joined with ${referrer.name}'s referral.`);
     }
   }
 

@@ -323,10 +323,11 @@ router.post('/:id/result', requireAuth, async (req, res) => {
       for (const uid of [a, c2]) {
         const u = await col('users').findOne({ id: uid }, { session });
         if (!u?.referred_by) continue;
-        const cut = Math.round(b.amount * settings.referral_rate);
+        const cut = Math.round(b.amount * (settings.referral_rate || 0.02));
         if (cut <= 0) continue;
-        await credit(u.referred_by, 'referral', cut, 'Referral commission', id, 'success', session);
+        await credit(u.referred_by, 'referral', cut, `Referral bonus — battle #${id.slice(-5)}`, id, 'success', session);
         await col('referrals').updateOne({ referrer_id: u.referred_by, referee_id: uid }, { $inc: { earned: cut } }, { session });
+        notes.push([u.referred_by, 'Referral bonus earned! 💰', `You earned ₹${cut} from ${u.name || 'your referral'}'s match.`]);
       }
       return { state: 'completed', winner, payout };
     });

@@ -20,6 +20,7 @@ import uploadRoutes, { UPLOAD_ROOT } from './routes/uploads.js';
 import adminRoutes from './routes/admin.js';
 import pushRoutes from './routes/push.js';
 import chatRoutes from './routes/chat.js';
+import referralRoutes from './routes/referrals.js';
 import { userRouter as paymentUserRoutes } from './routes/payments.js';
 import { attachRealtime } from './realtime.js';
 import { MODES, DEPOSIT, WITHDRAW } from './lib/config.js';
@@ -73,6 +74,7 @@ app.use('/api/uploads', uploadRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/referrals', referralRoutes);
 app.use('/api/payments', paymentUserRoutes);
 
 // Uploaded proof and KYC images.

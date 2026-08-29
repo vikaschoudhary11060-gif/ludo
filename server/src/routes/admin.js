@@ -245,13 +245,22 @@ router.post('/disputes/:id/resolve', requireAdmin('admin'), async (req, res) => 
         await col('battles').updateOne({ id }, { $set: { status: 'cancelled', settled_at: now() } }, { session });
         [b.creator_id, b.acceptor_id].forEach(u => notes.push([u, 'Dispute resolved', `Your ₹${b.amount} stake was refunded.${note ? ' ' + note : ''}`]));
       } else {
-        const winner = outcome === 'creator' ? b.creator_id : b.acceptor_id;
-        const loser = outcome === 'creator' ? b.acceptor_id : b.creator_id;
-        const payout = Math.round(b.amount * 2 * (1 - (await getSettings()).commission));
+        const settings = await getSettings();
+        const payout = Math.round(b.amount * 2 * (1 - settings.commission));
         await credit(winner, 'winnings', payout, `Dispute resolved in your favour — #${id.slice(-5)}`, id, 'success', session);
         await col('battles').updateOne({ id }, { $set: { status: 'completed', winner_id: winner, payout, settled_at: now() } }, { session });
         notes.push([winner, 'Dispute resolved — you won', `₹${payout} credited.${note ? ' ' + note : ''}`],
                    [loser, 'Dispute resolved', `The battle was awarded to your opponent.${note ? ' ' + note : ''}`]);
+
+        for (const uid of [b.creator_id, b.acceptor_id]) {
+          const u = await col('users').findOne({ id: uid }, { session });
+          if (!u?.referred_by) continue;
+          const cut = Math.round(b.amount * (settings.referral_rate || 0.02));
+          if (cut <= 0) continue;
+          await credit(u.referred_by, 'referral', cut, `Referral bonus — dispute #${id.slice(-5)}`, id, 'success', session);
+          await col('referrals').updateOne({ referrer_id: u.referred_by, referee_id: uid }, { $inc: { earned: cut } }, { session });
+          notes.push([u.referred_by, 'Referral bonus earned! 💰', `You earned ₹${cut} from ${u.name || 'your referral'}'s match.`]);
+        }
       }
     });
   } catch (e) {

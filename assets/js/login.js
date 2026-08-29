@@ -1,9 +1,10 @@
-/* Login — real OTP against the API. */
+/* Login — real OTP against the API with referral detection & binding. */
 (function () {
   'use strict';
   const K = window.Khelbro;
   const { $, $$, toast } = K;
   let phone = '', timer = null;
+  let appliedReferral = null;
 
   function startTimer(seconds = 30) {
     clearInterval(timer);
@@ -24,8 +25,94 @@
     startTimer(30);
   }
 
-  K.ready.then(() => {
+  async function validateAndApplyReferral(rawCode) {
+    const code = (rawCode || '').trim().toUpperCase();
+    if (!code) return false;
+    try {
+      const data = await Api.referrals.lookup(code);
+      if (data && data.valid) {
+        appliedReferral = data.code;
+        localStorage.setItem('khelbro.referral', data.code);
+        $('#ref-referrer-name').textContent = data.name || 'Khelbro Player';
+        $('#ref-badge-code').textContent = data.code;
+        $('#referral-banner').classList.remove('hidden');
+        $('#manual-ref-container').classList.add('hidden');
+        return true;
+      }
+    } catch {
+      // Invalid code
+    }
+    return false;
+  }
+
+  function removeReferral() {
+    appliedReferral = null;
+    localStorage.removeItem('khelbro.referral');
+    $('#referral-banner').classList.add('hidden');
+    $('#manual-ref-container').classList.remove('hidden');
+    $('#manual-ref-input').value = '';
+    $('#manual-ref-msg').classList.add('hidden');
+  }
+
+  K.ready.then(async () => {
     if (K.state.user) { location.replace('profile.html'); return; }
+
+    // Check referral from URL param or localStorage
+    const params = new URLSearchParams(location.search);
+    const initialRef = params.get('ref') || params.get('r') || params.get('referral') || localStorage.getItem('khelbro.referral');
+    if (initialRef) {
+      await validateAndApplyReferral(initialRef);
+    }
+
+    // Manual referral toggle
+    const toggleBtn = $('#toggle-manual-ref');
+    const manualForm = $('#manual-ref-form');
+    const arrow = $('#manual-ref-arrow');
+    if (toggleBtn && manualForm) {
+      toggleBtn.addEventListener('click', () => {
+        const isHidden = manualForm.classList.contains('hidden');
+        if (isHidden) {
+          manualForm.classList.remove('hidden');
+          arrow.textContent = '▴';
+          $('#manual-ref-input').focus();
+        } else {
+          manualForm.classList.add('hidden');
+          arrow.textContent = '▾';
+        }
+      });
+    }
+
+    // Apply manual referral code button
+    const applyBtn = $('#apply-ref-btn');
+    const manualInput = $('#manual-ref-input');
+    const manualMsg = $('#manual-ref-msg');
+    if (applyBtn && manualInput) {
+      applyBtn.addEventListener('click', async () => {
+        const val = manualInput.value.trim().toUpperCase();
+        if (!val) return;
+        applyBtn.disabled = true;
+        applyBtn.textContent = '...';
+        manualMsg.classList.add('hidden');
+        const ok = await validateAndApplyReferral(val);
+        applyBtn.disabled = false;
+        applyBtn.textContent = 'Apply';
+        if (ok) {
+          toast('Referral code applied! 🎁', 'success');
+        } else {
+          manualMsg.textContent = 'Invalid referral code. Please check and try again.';
+          manualMsg.classList.remove('hidden');
+        }
+      });
+    }
+
+    // Remove applied referral
+    const removeBtn = $('#ref-remove-btn');
+    if (removeBtn) {
+      removeBtn.addEventListener('click', () => {
+        removeReferral();
+        toast('Referral code removed', 'info');
+      });
+    }
 
     const input = $('#phone');
     input.addEventListener('input', () => {
@@ -84,8 +171,9 @@
       const btn = $('#otp-submit');
       btn.disabled = true; btn.textContent = 'Signing in…';
       try {
-        await Api.auth.verifyOtp(phone, code);
-        toast('Welcome to Khelbro!', 'success');
+        const res = await Api.auth.verifyOtp(phone, code, appliedReferral);
+        localStorage.removeItem('khelbro.referral');
+        toast(res.isNew && appliedReferral ? 'Welcome! Referral bonus activated 🎉' : 'Welcome to Khelbro!', 'success');
         const next = new URLSearchParams(location.search).get('next') || 'index.html';
         setTimeout(() => (location.href = next), 400);
       } catch (err) {

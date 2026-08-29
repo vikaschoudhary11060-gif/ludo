@@ -7,7 +7,7 @@
       <section class="bg-brand px-4 py-6 text-center text-white">
         <span class="text-[48px]" aria-hidden="true">&#127873;</span>
         <h1 class="mt-2 font-display text-h2 text-white">Refer &amp; Earn</h1>
-        <p class="mt-1 text-body-sm text-white/85">Earn 2% of every battle your friends play. Forever.</p>
+        <p class="mt-1 text-body-sm text-white/85">Earn <span id="ref-rate-badge" class="font-bold text-gold-light">2%</span> of every battle your friends play. Forever.</p>
       </section>
 
       <section class="section" data-when="out">
@@ -18,52 +18,98 @@
       </section>
 
       <div data-when="in" hidden>
+        <!-- Code & Link Box -->
         <section class="section">
           <p class="pill-label text-center text-muted-dark">Your referral code</p>
-          <div class="mt-3 flex items-center gap-2 rounded-card border-2 border-dashed border-gold bg-gold/10 p-4">
+          <div class="mt-2 flex items-center gap-2 rounded-card border-2 border-dashed border-gold bg-gold/10 p-3.5">
             <code class="flex-1 text-center font-display text-h2 tracking-[0.15em] text-ink" id="refer-code">KHEL-0000</code>
-            <button class="btn btn-gold !min-h-[40px] !px-4 !text-meta" type="button" id="copy-code">Copy</button>
+            <button class="btn btn-gold !min-h-[40px] !px-4 !text-meta" type="button" id="copy-code">Copy Code</button>
           </div>
-          <button class="btn btn-block mt-3 !bg-wa !text-white hover:!bg-[#1faa52]" type="button" id="share-wa">
-            Share on WhatsApp
-          </button>
+
+          <!-- Referral Link Input & Copy -->
+          <p class="pill-label mt-4 text-center text-muted-dark">Shareable invite link</p>
+          <div class="mt-2 flex items-center gap-2 rounded-card border border-line bg-surface p-2">
+            <input class="flex-1 bg-transparent px-2 font-mono text-body-sm text-ink outline-none" id="refer-link-input" readonly value="">
+            <button class="btn btn-secondary !min-h-[36px] !px-3 !text-meta" type="button" id="copy-link">Copy Link</button>
+          </div>
+
+          <!-- Social Share Buttons -->
+          <div class="mt-3 grid grid-cols-3 gap-2">
+            <button class="btn !min-h-[44px] !bg-wa !text-white hover:!bg-[#1faa52] !text-meta" type="button" id="share-wa">
+              WhatsApp
+            </button>
+            <button class="btn !min-h-[44px] !bg-[#0088cc] !text-white hover:!bg-[#0077b5] !text-meta" type="button" id="share-tg">
+              Telegram
+            </button>
+            <button class="btn btn-secondary !min-h-[44px] !text-meta" type="button" id="share-native">
+              Share Link
+            </button>
+          </div>
         </section>
 
         <div class="divider-x"></div>
 
+        <!-- Earnings & Stats -->
         <section class="section">
-          <div class="grid grid-cols-2 gap-3">
-            <div class="rounded-card border border-line p-4 text-center">
-              <p class="pill-label">Referred players</p>
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div class="rounded-card border border-line bg-surface p-3">
+              <p class="text-[11px] font-bold text-muted">Players</p>
               <p class="mt-1 font-display text-h2 text-ink" id="ref-count">0</p>
             </div>
-            <div class="rounded-card border border-line p-4 text-center">
-              <p class="pill-label">Referral earning</p>
-              <p class="mt-1 font-display text-h2 text-gold-deep" data-bind="earning">&#8377;0</p>
+            <div class="rounded-card border border-line bg-surface p-3">
+              <p class="text-[11px] font-bold text-muted">Total Earned</p>
+              <p class="mt-1 font-display text-h2 text-gold-deep" id="ref-total-earned">&#8377;0</p>
             </div>
+            <div class="rounded-card border border-line bg-surface p-3">
+              <p class="text-[11px] font-bold text-muted">Unredeemed</p>
+              <p class="mt-1 font-display text-h2 text-cta" id="ref-unredeemed">&#8377;0</p>
+            </div>
+          </div>
+
+          <!-- Quick Redeem Banner -->
+          <div class="mt-3 rounded-card border border-line bg-surface p-4 flex items-center justify-between gap-3">
+            <div>
+              <p class="text-body font-bold text-ink">Redeem Earnings</p>
+              <p class="text-meta text-muted">Move to your playable deposit balance</p>
+            </div>
+            <button class="btn btn-primary !min-h-[40px] !px-4 !text-meta" type="button" id="redeem-btn" disabled>Redeem</button>
           </div>
         </section>
 
         <div class="divider-x"></div>
 
+        <!-- Referral History List -->
         <section class="section" id="history">
-          <h2 class="section-title">Refer history</h2>
+          <div class="flex items-center justify-between">
+            <h2 class="section-title">Referred Players</h2>
+            <span class="text-meta text-muted" id="ref-summary-count">0 players</span>
+          </div>
           <ul class="mt-3 space-y-2" id="ref-list" data-stagger></ul>
           <div class="empty-state" id="ref-empty">
             <span class="grid h-20 w-20 place-items-center rounded-full bg-surface-page text-[40px]" aria-hidden="true">&#128101;</span>
             <p class="empty-state__title">No Refer History</p>
-            <p class="empty-state__text">Share your code and your referrals will appear here.</p>
+            <p class="empty-state__text">Share your code or link above and your referrals will appear here.</p>
           </div>
         </section>
 
         <div class="divider-x"></div>
 
+        <!-- How it works -->
         <section class="section">
-          <h2 class="section-title">How it works</h2>
+          <h2 class="section-title">How referral works</h2>
           <ol class="mt-3 space-y-3 text-body-sm text-ink">
-            <li class="flex gap-3"><span class="font-display font-bold text-brand">1.</span> Share your code with a friend.</li>
-            <li class="flex gap-3"><span class="font-display font-bold text-brand">2.</span> They sign up and enter it during their first battle.</li>
-            <li class="flex gap-3"><span class="font-display font-bold text-brand">3.</span> You earn 2% of every battle amount they play, credited instantly.</li>
+            <li class="flex gap-3">
+              <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand text-meta font-bold text-white">1</span>
+              <span><strong>Share your link or code</strong> with friends via WhatsApp, Telegram, or social media.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand text-meta font-bold text-white">2</span>
+              <span><strong>They sign up</strong> using your link or code and get access to all battles.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand text-meta font-bold text-white">3</span>
+              <span><strong>Earn lifetime commission</strong> &mdash; 2% of every battle stake they play is credited to you instantly.</span>
+            </li>
           </ol>
         </section>
       </div>

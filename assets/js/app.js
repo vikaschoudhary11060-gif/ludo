@@ -251,9 +251,21 @@
     return true;
   }
 
+  /* Capture referral code from URL if present */
+  function captureReferral() {
+    try {
+      const params = new URLSearchParams(location.search);
+      const ref = (params.get('ref') || params.get('r') || params.get('referral') || '').trim();
+      if (ref && /^[A-Za-z0-9_-]{3,25}$/.test(ref)) {
+        localStorage.setItem('khelbro.referral', ref.toUpperCase());
+      }
+    } catch {}
+  }
+
   /* ---------------- boot ---------------- */
   const ready = new Promise(resolve => {
     document.addEventListener('DOMContentLoaded', async () => {
+      captureReferral();
       initDrawer(); initModals(); markActiveNav();
       $$('[data-year]').forEach(el => (el.textContent = new Date().getFullYear()));
       $$('[data-action="logout"]').forEach(b =>

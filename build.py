@@ -351,7 +351,7 @@ PAGES = [
   ('waiting-room.html','Finding a Player | Khelbro',
    'Waiting for an opponent to join your Ludo battle.', 'waitingroom.js'),
   ('redeem.html',      'Redeem Referral | Khelbro',
-   'Move your Khelbro referral earnings into your playable balance.', 'refer.js'),
+   'Move your Khelbro referral earnings into your playable balance.', 'redeem.js'),
   ('terms.html',       'Terms &amp; Conditions | Khelbro',
    'The terms that govern your use of Khelbro, including fair play, battles and commission.', ''),
   ('privacy.html',     'Privacy Policy | Khelbro',

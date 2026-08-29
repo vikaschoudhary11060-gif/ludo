@@ -130,13 +130,15 @@ router.post('/withdraw', requireAuth, async (req, res) => {
 /* POST /api/wallet/redeem-referral */
 router.post('/redeem-referral', requireAuth, async (req, res) => {
   const w = await getWallet(req.user.id);
-  if (w.referral <= 0) return res.status(400).json({ error: 'Nothing to redeem.' });
+  if (!w || w.referral <= 0) return res.status(400).json({ error: 'No referral balance to redeem.' });
   const amount = w.referral;
   await withTransaction(async session => {
     await col('wallets').updateOne({ user_id: req.user.id }, { $set: { referral: 0 } }, { session });
     await credit(req.user.id, 'deposit', amount, 'Referral earnings redeemed', null, 'success', session);
   });
-  res.json({ ok: true, redeemed: amount });
+  await notify(req.user.id, 'Referral redeemed! 🎁', `₹${amount} moved to your deposit balance.`);
+  const updatedWallet = await getWallet(req.user.id);
+  res.json({ ok: true, redeemed: amount, wallet: { ...updatedWallet, total: updatedWallet.deposit + updatedWallet.winnings } });
 });
 
 export default router;

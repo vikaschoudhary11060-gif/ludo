@@ -157,6 +157,11 @@
 
     leaderboard: range => request(`/leaderboard?range=${range || 'today'}`, { auth: true }),
 
+    referrals: {
+      lookup: code => request('/referrals/lookup/' + encodeURIComponent(code), { auth: false }),
+      stats: () => request('/referrals/stats'),
+    },
+
     chat: {
       get: () => request('/chat'),
       unread: () => request('/chat/unread'),
