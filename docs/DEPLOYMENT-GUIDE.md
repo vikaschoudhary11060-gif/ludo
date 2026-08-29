@@ -28,7 +28,22 @@ git push -u origin main
 
 ---
 
-## 1. The database — pick ONE
+## 1. The database — MongoDB Atlas (now built in)
+
+The app now runs natively on **MongoDB**. You already created the Atlas cluster; the
+connection string lives in `server/.env` as `MONGO_URI`. Nothing else to configure —
+no persistent disk needed, backups are managed by Atlas.
+
+For a NEW Atlas account, the steps are: register → create a free **M0** cluster (Mumbai
+`ap-south-1`) → Database Access: add a user + password → Network Access: allow `0.0.0.0/0`
+→ Connect → Drivers → copy the string → put it in `.env` as
+`MONGO_URI=…/khelbro?retryWrites=true&w=majority`.
+
+> ⚠️ Rotate the password if it was ever shared in plaintext.
+
+<details><summary>Old note: the previous SQLite option (no longer used)</summary>
+
+## 1b. Legacy — SQLite (superseded)
 
 ### Option A (recommended): SQLite on a persistent disk — nothing to install
 The app already uses SQLite. There is **no account to create and no connection string.**

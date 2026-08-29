@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Khelbro API — auth, wallet, battles, leaderboard, realtime",
+  "description": "Khelbro API \u2014 auth, wallet, battles, leaderboard, realtime",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "seed": "node src/seed.js",
+    "seed": "node src/seed-demo.js",
     "seed:demo": "node src/seed-demo.js",
     "admin:create": "node src/create-admin.js"
   },

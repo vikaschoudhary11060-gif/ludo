@@ -23,7 +23,7 @@ import chatRoutes from './routes/chat.js';
 import { userRouter as paymentUserRoutes } from './routes/payments.js';
 import { attachRealtime } from './realtime.js';
 import { MODES, DEPOSIT, WITHDRAW } from './lib/config.js';
-import { getSettings } from './lib/db.js';
+import { getSettings, connect, ensureSeed } from './lib/db.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -38,8 +38,8 @@ app.use(express.json({ limit: '1mb' }));
 app.use(rateLimit({ windowMs: 60_000, max: 240 }));
 
 /* Public config so the front end never hard-codes business rules. */
-app.get('/api/config', (_req, res) => {
-  const s = getSettings();
+app.get('/api/config', async (_req, res) => {
+  const s = await getSettings();
   res.json({
     modes: MODES, deposit: DEPOSIT, withdraw: WITHDRAW,
     commission: s.commission, referralRate: s.referral_rate, battleLimit: s.battle_limit,
@@ -78,6 +78,8 @@ app.set('io', io);
 attachRealtime(io, app);
 
 const PORT = Number(process.env.PORT) || 4000;
+await connect();
+await ensureSeed();
 server.listen(PORT, () => {
   console.log(`Khelbro API listening on http://localhost:${PORT}`);
   console.log(`CORS origins: ${ORIGINS.join(', ')}`);
