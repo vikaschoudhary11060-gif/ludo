@@ -101,7 +101,30 @@
           <button class="btn btn-primary btn-block mt-5" type="button" id="submit-result" disabled>Submit result</button>
         </section>
 
-        <!-- Creator can reject the player who joined -->
+        <!-- Incoming opponent request (creator sees this when status is 'requested') -->
+        <section class="section" id="request-section" hidden>
+          <div class="rounded-card border border-brand bg-brand/5 p-4 text-center">
+            <span class="text-h2" aria-hidden="true">&#9874;</span>
+            <h3 class="mt-2 text-title font-bold text-ink" id="req-title">New Opponent Request!</h3>
+            <p class="mt-1 text-body-sm text-muted" id="req-desc">A player wants to join this battle.</p>
+            <div class="mt-4 flex flex-col gap-2">
+              <button class="btn btn-primary btn-block" type="button" id="accept-request-btn">Accept &amp; Start Battle</button>
+              <button class="btn btn-outline btn-block !text-live hover:!border-live" type="button" id="reject-request-btn">Decline Request</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Opponent waiting for host approval (opponent sees this when status is 'requested') -->
+        <section class="section" id="opponent-pending-section" hidden>
+          <div class="rounded-card border border-gold bg-gold/10 p-4 text-center">
+            <span class="text-h2" aria-hidden="true">&#8987;</span>
+            <h3 class="mt-2 text-title font-bold text-ink">Request Sent</h3>
+            <p class="mt-1 text-body-sm text-muted">Waiting for the host to accept your request…</p>
+            <button class="btn btn-outline mt-4" type="button" id="cancel-my-request-btn">Withdraw Request</button>
+          </div>
+        </section>
+
+        <!-- Creator can reject the player who joined after waiting -->
         <section class="section" id="reject-section" hidden>
           <button class="btn btn-outline btn-block !text-live hover:!border-live" type="button" id="reject-battle">
             Reject this player
