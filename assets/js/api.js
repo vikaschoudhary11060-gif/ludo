@@ -63,8 +63,9 @@
     auth: {
       requestOtp: phone => request('/auth/request-otp', { method: 'POST', auth: false, body: { phone } }),
       verifyOtp: async (phone, code, referralCode) => {
-        const data = await request('/auth/verify-otp',
-          { method: 'POST', auth: false, body: { phone, code, referralCode } });
+        const body = { phone, code };
+        if (referralCode) body.referralCode = referralCode;
+        const data = await request('/auth/verify-otp', { method: 'POST', auth: false, body });
         setToken(data.token);
         return data;
       },

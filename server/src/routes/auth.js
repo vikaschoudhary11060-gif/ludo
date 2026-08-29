@@ -36,7 +36,7 @@ router.post('/verify-otp', async (req, res) => {
   const schema = z.object({
     phone: phoneSchema,
     code: z.string().regex(/^\d{6}$/, 'Enter the 6-digit code.'),
-    referralCode: z.string().trim().optional(),
+    referralCode: z.string().trim().nullable().optional(),
   });
   const parsed = schema.safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
