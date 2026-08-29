@@ -25,7 +25,7 @@ let database = null;
 export async function connect() {
   if (database) return database;
   await client.connect();
-  database = client.db();               // db name comes from the URI (…/khelbro)
+  database = client.db('khelbro');
   await ensureIndexes();
   return database;
 }
