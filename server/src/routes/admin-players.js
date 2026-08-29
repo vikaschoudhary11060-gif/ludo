@@ -174,15 +174,32 @@ router.get('/pending-money', async (_req, res) => {
 });
 
 router.get('/reconcile', async (_req, res) => {
+  /* Single aggregation: compute ledger balance per user per bucket,
+     then compare against the wallets collection via $lookup. */
+  const ledger = await col('transactions').aggregate([
+    { $match: { status: { $ne: 'failed' } } },
+    { $group: {
+      _id: { user_id: '$user_id', bucket: '$bucket' },
+      balance: { $sum: { $cond: [{ $eq: ['$type', 'credit'] }, '$amount', { $multiply: ['$amount', -1] }] } },
+    } },
+  ]).toArray();
+
+  // Build a map: userId -> { deposit, winnings, referral }
+  const ledgerMap = {};
+  for (const r of ledger) {
+    const uid = r._id.user_id;
+    if (!ledgerMap[uid]) ledgerMap[uid] = { deposit: 0, winnings: 0, referral: 0 };
+    ledgerMap[uid][r._id.bucket] = r.balance;
+  }
+
+  const wallets = await col('wallets').find({}, { projection: { _id: 0, user_id: 1, deposit: 1, winnings: 1, referral: 1 } }).toArray();
   const mismatches = [];
-  const wallets = await col('wallets').find({}).toArray();
   for (const w of wallets) {
+    const led = ledgerMap[w.user_id] || { deposit: 0, winnings: 0, referral: 0 };
     for (const bucket of ['deposit', 'winnings', 'referral']) {
-      const r = await col('transactions').aggregate([
-        { $match: { user_id: w.user_id, bucket, status: { $ne: 'failed' } } },
-        { $group: { _id: null, v: { $sum: { $cond: [{ $eq: ['$type', 'credit'] }, '$amount', { $multiply: ['$amount', -1] }] } } } }]).toArray();
-      const led = r[0]?.v || 0;
-      if (w[bucket] !== led) mismatches.push({ userId: w.user_id, bucket, wallet: w[bucket], ledger: led, diff: w[bucket] - led });
+      if (w[bucket] !== led[bucket]) {
+        mismatches.push({ userId: w.user_id, bucket, wallet: w[bucket], ledger: led[bucket], diff: w[bucket] - led[bucket] });
+      }
     }
   }
   res.json({ ok: mismatches.length === 0, checked: wallets.length, mismatches });
@@ -227,25 +244,60 @@ router.get('/fraud/collusion', async (_req, res) => {
 
 router.get('/withdrawals/risk', async (_req, res) => {
   const pend = await col('withdrawal_requests').find({ status: 'pending' }).sort({ created_at: 1 }).toArray();
-  const scored = [];
-  for (const w of pend) {
-    const u = await col('users').findOne({ id: w.user_id }, { projection: { name: 1, phone: 1, created_at: 1, kyc_status: 1 } });
+  if (!pend.length) return res.json({ withdrawals: [] });
+
+  const userIds = [...new Set(pend.map(w => w.user_id))];
+
+  // Batch all lookups in parallel
+  const [users, winCounts, priorWdCounts, loginEvents] = await Promise.all([
+    col('users').find({ id: { $in: userIds } }, { projection: { id: 1, name: 1, phone: 1, created_at: 1, kyc_status: 1 } }).toArray(),
+    col('battles').aggregate([
+      { $match: { winner_id: { $in: userIds } } },
+      { $group: { _id: '$winner_id', count: { $sum: 1 } } },
+    ]).toArray(),
+    col('withdrawal_requests').aggregate([
+      { $match: { user_id: { $in: userIds }, status: 'paid' } },
+      { $group: { _id: '$user_id', count: { $sum: 1 } } },
+    ]).toArray(),
+    col('login_events').find({ user_id: { $in: userIds }, ip: { $nin: [null, ''] } },
+      { projection: { user_id: 1, ip: 1 } }).toArray(),
+  ]);
+
+  const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+  const winMap = Object.fromEntries(winCounts.map(r => [r._id, r.count]));
+  const wdMap = Object.fromEntries(priorWdCounts.map(r => [r._id, r.count]));
+
+  // Build per-user IP sets and count shared IPs
+  const ipsByUser = {};
+  const usersByIp = {};
+  for (const le of loginEvents) {
+    if (!ipsByUser[le.user_id]) ipsByUser[le.user_id] = new Set();
+    ipsByUser[le.user_id].add(le.ip);
+    if (!usersByIp[le.ip]) usersByIp[le.ip] = new Set();
+    usersByIp[le.ip].add(le.user_id);
+  }
+
+  const scored = pend.map(w => {
+    const u = userMap[w.user_id];
     const reasons = []; let score = 0;
     const ageDays = (Date.now() - (u?.created_at || 0)) / 864e5;
     if (ageDays < 1) { score += 40; reasons.push('account < 1 day old'); }
     else if (ageDays < 7) { score += 15; reasons.push('account < 1 week old'); }
-    const gamesWon = await col('battles').countDocuments({ winner_id: w.user_id });
-    if (gamesWon === 0) { score += 35; reasons.push('no games won'); }
-    const priorWd = await col('withdrawal_requests').countDocuments({ user_id: w.user_id, status: 'paid' });
-    if (priorWd === 0) { score += 10; reasons.push('first withdrawal'); }
+    if (!(winMap[w.user_id] > 0)) { score += 35; reasons.push('no games won'); }
+    if (!(wdMap[w.user_id] > 0)) { score += 10; reasons.push('first withdrawal'); }
     if (w.amount >= 10000) { score += 20; reasons.push('large amount'); }
     if (u?.kyc_status !== 'done') { score += 30; reasons.push('KYC not complete'); }
-    const myIps = await col('login_events').distinct('ip', { user_id: w.user_id });
-    const sharedCount = myIps.length ? await col('login_events').countDocuments({ ip: { $in: myIps }, user_id: { $ne: w.user_id } }) : 0;
+    const myIps = ipsByUser[w.user_id] || new Set();
+    let sharedCount = 0;
+    for (const ip of myIps) {
+      const others = usersByIp[ip];
+      if (others) for (const uid of others) { if (uid !== w.user_id) sharedCount++; }
+    }
     if (sharedCount > 0) { score += 15; reasons.push(`shares device with ${sharedCount} login(s)`); }
-    scored.push({ ...w, name: u?.name, phone: u?.phone, riskScore: Math.min(100, score),
-      riskLevel: score >= 60 ? 'high' : score >= 30 ? 'medium' : 'low', reasons });
-  }
+    return { ...w, name: u?.name, phone: u?.phone, riskScore: Math.min(100, score),
+      riskLevel: score >= 60 ? 'high' : score >= 30 ? 'medium' : 'low', reasons };
+  });
+
   res.json({ withdrawals: scored });
 });
 

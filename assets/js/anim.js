@@ -78,38 +78,62 @@
      actually changes. */
   const rupee = n => '₹' + Math.round(n).toLocaleString('en-IN');
 
+  /* One run token per element. Retargeting an element mid-flight bumps the
+     token so the older frame loop stops instead of fighting the new one. */
+  const runToken = new WeakMap();
+
   function countUp(el, to, opts = {}) {
-    if (reduce) { el.textContent = opts.money ? rupee(to) : Math.round(to); return; }
+    const onWrite = opts.onWrite || (() => {});
+    const onDone = opts.onDone || (() => {});
+    const put = v => {
+      const text = opts.money ? rupee(v) : String(Math.round(v));
+      el.textContent = text;
+      onWrite(text);
+    };
+    const token = (runToken.get(el) || 0) + 1;
+    runToken.set(el, token);
+
+    if (reduce) { el.dataset.value = to; put(to); onDone(); return; }
     const from = Number(el.dataset.value || 0);
-    if (from === to) return;
+    if (from === to) { onDone(); return; }
     el.dataset.value = to;
     const dur = 600, start = performance.now();
     const tick = now => {
+      if (runToken.get(el) !== token) { onDone(); return; }   // superseded by a newer value
       const t = Math.min(1, (now - start) / dur);
       const eased = 1 - Math.pow(1 - t, 3);
-      const val = from + (to - from) * eased;
-      el.textContent = opts.money ? rupee(val) : Math.round(val);
-      if (t < 1) requestAnimationFrame(tick);
-      else el.textContent = opts.money ? rupee(to) : Math.round(to);
+      if (t < 1) { put(from + (to - from) * eased); requestAnimationFrame(tick); }
+      else { put(to); onDone(); }
     };
     requestAnimationFrame(tick);
-    // pop the element on increase
-    if (to > from) { el.classList.remove('animate-coin'); void el.offsetWidth; el.classList.add('animate-coin'); }
+    // pop the element on increase — no forced reflow
+    if (to > from) {
+      el.classList.remove('animate-coin');
+      requestAnimationFrame(() => el.classList.add('animate-coin'));
+    }
   }
 
-  /* Watch the header money boxes; when app.js updates them, animate. */
+  /* Watch the header money boxes; when app.js updates them, animate.
+
+     countUp rewrites the text on every frame, and each of those writes is
+     itself a mutation. Without `mine` the observer read a half-finished
+     frame as a brand-new balance and started animating towards it, so the
+     loops chased each other and the box settled on a number the user never
+     had. Comparing against the exact string we last wrote tells our own
+     frames apart from a real update by app.js. */
   function watchMoney() {
     document.querySelectorAll('[data-bind="cash"],[data-bind="winnings"],[data-bind="earning"],[data-bind="balance"],[data-bind="won"]')
       .forEach(el => {
+        const money = el.getAttribute('data-bind') !== 'won';
         const parse = () => Number((el.textContent || '').replace(/[^\d.]/g, '')) || 0;
         el.dataset.value = parse();
+        let animating = false;
         const mo = new MutationObserver(() => {
+          if (animating) return;                              // skip our own frames
           const next = parse();
-          if (next !== Number(el.dataset.value)) {
-            const target = next;
-            // reset text so countUp animates from the stored value
-            countUp(el, target, { money: /₹/.test(el.textContent) || true });
-          }
+          if (next === Number(el.dataset.value)) return;
+          animating = true;
+          countUp(el, next, { money, onWrite: () => {}, onDone: () => { animating = false; } });
         });
         mo.observe(el, { childList: true, characterData: true, subtree: true });
       });

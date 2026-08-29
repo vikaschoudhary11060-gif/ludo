@@ -710,7 +710,7 @@
     range = v;
     $$('[data-range]').forEach(b => b.classList.toggle('is-active', b.dataset.range === v));
     const m = $('#m-range'); if (m && m.value !== v) m.value = v;
-    refreshCounts(); render();
+    render(); if (tab !== 'overview') refreshCounts();
   }
   function syncGameStatus(v) {
     gameStatus = v;
@@ -1036,8 +1036,8 @@
     if (e.target.id === 'auto') {
       clearInterval(autoTimer);
       if (e.target.checked) {
-        autoTimer = setInterval(() => { refreshCounts(); render(); }, 10000);
-        toast('Auto-refreshing every 10s', 'info');
+        autoTimer = setInterval(() => { refreshCounts(); render(); }, 60000);
+        toast('Auto-refreshing every 60s', 'info');
       }
     }
   });

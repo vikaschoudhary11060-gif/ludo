@@ -89,24 +89,38 @@ router.patch('/admins/:id', requireAdmin('owner'), async (req, res) => {
 /* ---------- overview stats ---------- */
 router.get('/stats', async (req, res) => {
   const from = since(req);
-  const battleAgg = await col('battles').aggregate([
-    { $match: { created_at: { $gte: from } } },
-    { $group: { _id: '$status', n: { $sum: 1 }, staked: { $sum: '$amount' } } },
-  ]).toArray();
-  const byStatus = Object.fromEntries(battleAgg.map(b => [b._id, b.n]));
-  const settledAgg = await col('battles').aggregate([
-    { $match: { status: 'completed', settled_at: { $gte: from } } },
-    { $group: { _id: null, staked: { $sum: '$amount' }, paid: { $sum: { $ifNull: ['$payout', 0] } } } },
-  ]).toArray();
-  const settled = settledAgg[0] || { staked: 0, paid: 0 };
-
   const sumWhere = async (coll, match, field = 'amount') => {
     const r = await col(coll).aggregate([{ $match: match }, { $group: { _id: null, v: { $sum: '$' + field } } }]).toArray();
     return r[0]?.v || 0;
   };
+
+  const [battleAgg, settledAgg, users, kycPending,
+         instantDep, pendingDep, approvedDep,
+         pendingWd, pendingWdVal, paidWd] = await Promise.all([
+    col('battles').aggregate([
+      { $match: { created_at: { $gte: from } } },
+      { $group: { _id: '$status', n: { $sum: 1 }, staked: { $sum: '$amount' } } },
+    ]).toArray(),
+    col('battles').aggregate([
+      { $match: { status: 'completed', settled_at: { $gte: from } } },
+      { $group: { _id: null, staked: { $sum: '$amount' }, paid: { $sum: { $ifNull: ['$payout', 0] } } } },
+    ]).toArray(),
+    col('users').countDocuments({ created_at: { $gte: from } }),
+    col('users').countDocuments({ kyc_status: 'pending' }),
+    sumWhere('transactions', { type: 'credit', bucket: 'deposit', note: { $in: ['Deposit', 'Cashback bonus'] }, created_at: { $gte: from } }),
+    col('deposit_requests').countDocuments({ status: 'pending', created_at: { $gte: from } }),
+    sumWhere('deposit_requests', { status: 'approved', created_at: { $gte: from } }),
+    col('withdrawal_requests').countDocuments({ status: 'pending', created_at: { $gte: from } }),
+    sumWhere('withdrawal_requests', { status: 'pending', created_at: { $gte: from } }),
+    sumWhere('withdrawal_requests', { status: 'paid', created_at: { $gte: from } }),
+  ]);
+
+  const byStatus = Object.fromEntries(battleAgg.map(b => [b._id, b.n]));
+  const settled = settledAgg[0] || { staked: 0, paid: 0 };
+
   res.json({
     range: req.query.range || 'all',
-    users: await col('users').countDocuments({ created_at: { $gte: from } }),
+    users,
     battles: {
       total: battleAgg.reduce((s, b) => s + b.n, 0),
       open: byStatus.open || 0, waiting: byStatus.waiting || 0, running: byStatus.running || 0,
@@ -114,16 +128,16 @@ router.get('/stats', async (req, res) => {
     },
     commission: Math.max(0, settled.staked * 2 - settled.paid),
     deposits: {
-      instant: await sumWhere('transactions', { type: 'credit', bucket: 'deposit', note: { $in: ['Deposit', 'Cashback bonus'] }, created_at: { $gte: from } }),
-      pending: await col('deposit_requests').countDocuments({ status: 'pending', created_at: { $gte: from } }),
-      approved: await sumWhere('deposit_requests', { status: 'approved', created_at: { $gte: from } }),
+      instant: instantDep,
+      pending: pendingDep,
+      approved: approvedDep,
     },
     withdrawals: {
-      pending: await col('withdrawal_requests').countDocuments({ status: 'pending', created_at: { $gte: from } }),
-      pendingValue: await sumWhere('withdrawal_requests', { status: 'pending', created_at: { $gte: from } }),
-      paid: await sumWhere('withdrawal_requests', { status: 'paid', created_at: { $gte: from } }),
+      pending: pendingWd,
+      pendingValue: pendingWdVal,
+      paid: paidWd,
     },
-    kycPending: await col('users').countDocuments({ kyc_status: 'pending' }),
+    kycPending,
   });
 });
 
@@ -145,7 +159,8 @@ router.get('/battles', async (req, res) => {
     const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     rows = rows.filter(b => rx.test(b.creator_name || '') || rx.test(b.acceptor_name || '') || rx.test(b.id) || rx.test(b.room_code || ''));
   }
-  const claims = await col('battle_claims').find({}, { projection: { _id: 0, battle_id: 1, user_id: 1, claim: 1, reason: 1, proof: 1 } }).toArray();
+  const battleIds = rows.map(b => b.id);
+  const claims = await col('battle_claims').find({ battle_id: { $in: battleIds } }, { projection: { _id: 0, battle_id: 1, user_id: 1, claim: 1, reason: 1, proof: 1 } }).toArray();
   res.json({ battles: rows.map(b => ({ ...b, claims: claims.filter(c => c.battle_id === b.id) })) });
 });
 
@@ -208,7 +223,8 @@ router.get('/disputes', async (req, res) => {
     { $addFields: { creator_name: { $arrayElemAt: ['$c.name', 0] }, acceptor_name: { $arrayElemAt: ['$a.name', 0] } } },
     { $project: { _id: 0, id: 1, amount: 1, mode: 1, room_code: 1, created_at: 1, creator_id: 1, acceptor_id: 1, creator_name: 1, acceptor_name: 1 } },
   ]).toArray();
-  const claims = await col('battle_claims').find({}, { projection: { _id: 0, battle_id: 1, user_id: 1, claim: 1, reason: 1, proof: 1 } }).toArray();
+  const disputeIds = rows.map(b => b.id);
+  const claims = await col('battle_claims').find({ battle_id: { $in: disputeIds } }, { projection: { _id: 0, battle_id: 1, user_id: 1, claim: 1, reason: 1, proof: 1 } }).toArray();
   res.json({ disputes: rows.map(b => ({ ...b, claims: claims.filter(c => c.battle_id === b.id) })) });
 });
 
@@ -252,7 +268,8 @@ router.post('/disputes/:id/resolve', requireAdmin('admin'), async (req, res) => 
 router.get('/kyc', async (_req, res) => {
   const rows = await col('users').find({ kyc_status: 'pending' },
     { projection: { _id: 0, id: 1, name: 1, phone: 1, legal_name: 1, kyc_status: 1 } }).sort({ id: 1 }).toArray();
-  const docs = await col('kyc_documents').find({}, { projection: { _id: 0, user_id: 1, slot: 1, path: 1 } }).toArray();
+  const kycIds = rows.map(u => u.id);
+  const docs = await col('kyc_documents').find({ user_id: { $in: kycIds } }, { projection: { _id: 0, user_id: 1, slot: 1, path: 1 } }).toArray();
   res.json({ pending: rows.map(u => ({ ...u, documents: docs.filter(d => d.user_id === u.id) })) });
 });
 

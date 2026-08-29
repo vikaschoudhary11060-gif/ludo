@@ -19,7 +19,7 @@ if (!URI) {
   throw new Error('MONGO_URI is not set. Please add MONGO_URI to your environment variables on Render.');
 }
 
-const client = new MongoClient(URI, { maxPoolSize: 20 });
+const client = new MongoClient(URI, { maxPoolSize: 50 });
 let database = null;
 
 export async function connect() {
@@ -94,6 +94,13 @@ async function ensureIndexes() {
     d.collection('payment_methods').createIndex({ id: 1 }, { unique: true }),
     d.collection('watchlist').createIndex({ user_id: 1 }, { unique: true }),
     d.collection('settings').createIndex({ id: 1 }, { unique: true }),
+    d.collection('battles').createIndex({ created_at: -1 }),
+    d.collection('battles').createIndex({ winner_id: 1 }),
+    d.collection('battles').createIndex({ status: 1, settled_at: -1 }),
+    d.collection('users').createIndex({ kyc_status: 1 }),
+    d.collection('users').createIndex({ created_at: -1 }),
+    d.collection('transactions').createIndex({ type: 1, bucket: 1, created_at: -1 }),
+    d.collection('chat_threads').createIndex({ unread_admin: -1, last_at: -1 }),
   ]);
 }
 
