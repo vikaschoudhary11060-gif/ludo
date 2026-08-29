@@ -28,12 +28,21 @@ import { getSettings, connect, ensureSeed } from './lib/db.js';
 const app = express();
 const server = http.createServer(app);
 
-const ORIGINS = (process.env.CORS_ORIGIN || 'http://localhost:5173')
-  .split(',').map(s => s.trim());
+const configuredOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+  .split(',').map(s => s.trim()).filter(Boolean);
 
 app.set('trust proxy', 1);
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-app.use(cors({ origin: ORIGINS, credentials: true }));
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (configuredOrigins.includes(origin) || /\.vercel\.app$/.test(new URL(origin).hostname)) {
+      return callback(null, true);
+    }
+    return callback(null, true);
+  },
+  credentials: true
+}));
 app.use(express.json({ limit: '1mb' }));
 app.use(rateLimit({ windowMs: 60_000, max: 240 }));
 
