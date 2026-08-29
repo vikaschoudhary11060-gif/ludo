@@ -3,23 +3,23 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Khelbro API \u2014 auth, wallet, battles, leaderboard, realtime",
+  "description": "Khelbro API — auth, wallet, battles, leaderboard, realtime",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
+    "build": "echo 'No build step required'",
     "seed": "node src/seed-demo.js",
     "seed:demo": "node src/seed-demo.js",
     "admin:create": "node src/create-admin.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.12",
     "adm-zip": "^0.6.0",
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
