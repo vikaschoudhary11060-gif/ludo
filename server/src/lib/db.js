@@ -19,8 +19,10 @@ export async function ensureSeed() {
   if (!existing) {
     await col('settings').insertOne({
       id: 1, withdraw_open: 1, deposit_open: 1, maintenance: 0, notice: null,
-      commission: 0.05, battle_limit: 2, referral_rate: 0.02, upi_id: 'khelbro@upi', qr_image: null,
+      commission: 0.05, battle_limit: 2, referral_rate: 0.01, upi_id: 'khelbro@upi', qr_image: null,
     });
+  } else if (existing.referral_rate === 0.02) {
+    await col('settings').updateOne({ id: 1 }, { $set: { referral_rate: 0.01 } });
   }
 }
 

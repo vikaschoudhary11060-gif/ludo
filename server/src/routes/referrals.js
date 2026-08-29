@@ -68,8 +68,8 @@ router.get('/stats', requireAuth, async (req, res) => {
 
   res.json({
     code: req.user.referral_code,
-    rate: settings.referral_rate || 0.02,
-    ratePercentage: Math.round((settings.referral_rate || 0.02) * 100),
+    rate: settings.referral_rate || 0.01,
+    ratePercentage: Math.round((settings.referral_rate || 0.01) * 100),
     totalEarned,
     unredeemed: wallet?.referral || 0,
     referralsCount: rows.length,

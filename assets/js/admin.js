@@ -443,6 +443,63 @@
         </div>
       </div>
 
+      <div class="mt-3 rounded-card border border-line bg-surface p-4">
+        <div class="mb-3 flex items-center justify-between">
+          <p class="text-body font-bold text-ink">Match &amp; Battle History (${d.recentGames.length})</p>
+          <span class="text-meta text-muted">${st.won} won / ${st.played} played (${st.winRate}% win rate)</span>
+        </div>
+        ${d.recentGames && d.recentGames.length ? `
+          <div class="overflow-x-auto">
+            <table class="rtable w-full border-collapse text-body-sm">
+              <thead><tr class="bg-accent-head text-left text-brand-dark">
+                <th class="px-2.5 py-2 font-bold">Match</th>
+                <th class="px-2.5 py-2 font-bold">Opponent</th>
+                <th class="px-2.5 py-2 font-bold">Stake</th>
+                <th class="px-2.5 py-2 font-bold">Result</th>
+                <th class="px-2.5 py-2 font-bold">Room Code</th>
+                <th class="px-2.5 py-2 font-bold">When</th>
+                <th class="px-2.5 py-2"></th>
+              </tr></thead>
+              <tbody class="divide-y divide-line">
+                ${d.recentGames.map(g => `
+                  <tr class="hover:bg-surface-page">
+                    <td data-label="Match" class="px-2.5 py-2 font-mono text-[11px] text-muted">#${g.id.slice(-6)}</td>
+                    <td data-label="Opponent" class="px-2.5 py-2">
+                      <span class="inline-block text-[11px] text-muted">${g.isCreator ? 'Created vs' : 'Joined vs'}</span>
+                      <strong class="text-ink">${esc(g.isCreator ? g.acceptorName : g.creatorName)}</strong>
+                      ${(g.isCreator ? g.acceptorPhone : g.creatorPhone) ? `<span class="block font-mono text-[10px] text-muted">${esc(g.isCreator ? g.acceptorPhone : g.creatorPhone)}</span>` : ''}
+                    </td>
+                    <td data-label="Stake" class="px-2.5 py-2 font-black text-ink">${money(g.amount)}</td>
+                    <td data-label="Result" class="px-2.5 py-2">
+                      ${g.isWinner ? '<span class="inline-block rounded-full bg-cta/15 px-2 py-0.5 text-[10px] font-bold text-cta">Won (+' + money(g.payout || 0) + ')</span>' :
+                        g.isLoser ? '<span class="inline-block rounded-full bg-live/15 px-2 py-0.5 text-[10px] font-bold text-live">Lost</span>' :
+                        pill(g.status)}
+                    </td>
+                    <td data-label="Room" class="px-2.5 py-2 font-mono text-[11px] font-bold text-brand">${esc(g.roomCode || '—')}</td>
+                    <td data-label="When" class="px-2.5 py-2 text-[11px] text-muted">${when(g.createdAt)}</td>
+                    <td data-label="" class="rtable-actions px-2.5 py-2 text-right">
+                      ${g.claims && g.claims.length ? `<button class="text-[11px] font-bold text-brand hover:underline" data-expand="${g.id}">Claims (${g.claims.length})</button>` : ''}
+                    </td>
+                  </tr>
+                  ${g.claims && g.claims.length ? `
+                    <tr hidden data-detail="${g.id}"><td colspan="7" class="bg-surface-page px-3 py-3">
+                      <div class="flex flex-wrap gap-4">
+                        ${g.claims.map(c => `<div class="rounded-tile border border-line bg-surface p-3">
+                          <p class="pill-label">${c.user_id === p.id ? 'This Player (' + esc(p.name) + ')' : 'Opponent'}</p>
+                          <p class="text-body font-bold text-ink">Claim: ${esc(c.claim)}</p>
+                          ${c.reason ? `<p class="text-meta text-muted">${esc(c.reason)}</p>` : ''}
+                          <div class="mt-2">${shot(c.proof)}</div>
+                        </div>`).join('')}
+                      </div>
+                    </td></tr>
+                  ` : ''}
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : '<p class="text-meta text-muted">No matches played yet.</p>'}
+      </div>
+
       <div class="mt-3 grid gap-3 lg:grid-cols-2">
         <div class="rounded-card border border-line bg-surface p-4">
           <p class="mb-2 text-body font-bold text-ink">Recent transactions</p>

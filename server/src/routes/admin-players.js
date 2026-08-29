@@ -59,8 +59,51 @@ router.get('/players/:id', async (req, res) => {
   const wdAgg = await col('transactions').aggregate([
     { $match: { user_id: id, type: 'debit', note: /^Withdrawal/ } }, { $group: { _id: null, v: { $sum: '$amount' } } }]).toArray();
 
-  const recentTx = await col('transactions').find({ user_id: id }, { projection: { _id: 0, type: 1, bucket: 1, amount: 1, note: 1, status: 1, created_at: 1 } }).sort({ created_at: -1 }).limit(15).toArray();
-  const recentGames = await col('battles').find({ $or: [{ creator_id: id }, { acceptor_id: id }] }, { projection: { _id: 0, id: 1, amount: 1, status: 1, winner_id: 1, created_at: 1 } }).sort({ created_at: -1 }).limit(10).toArray();
+  const recentTx = await col('transactions').find({ user_id: id }, { projection: { _id: 0, type: 1, bucket: 1, amount: 1, note: 1, status: 1, created_at: 1 } }).sort({ created_at: -1 }).limit(20).toArray();
+
+  const recentGames = await col('battles').aggregate([
+    { $match: { $or: [{ creator_id: id }, { acceptor_id: id }] } },
+    { $sort: { created_at: -1 } },
+    { $limit: 40 },
+    { $lookup: { from: 'users', localField: 'creator_id', foreignField: 'id', as: 'c' } },
+    { $lookup: { from: 'users', localField: 'acceptor_id', foreignField: 'id', as: 'a' } },
+    { $addFields: {
+      creator_name: { $arrayElemAt: ['$c.name', 0] },
+      creator_phone: { $arrayElemAt: ['$c.phone', 0] },
+      acceptor_name: { $arrayElemAt: ['$a.name', 0] },
+      acceptor_phone: { $arrayElemAt: ['$a.phone', 0] },
+    } },
+    { $project: { _id: 0, c: 0, a: 0 } },
+  ]).toArray();
+
+  const battleIds = recentGames.map(b => b.id);
+  const claims = await col('battle_claims').find(
+    { battle_id: { $in: battleIds } },
+    { projection: { _id: 0, battle_id: 1, user_id: 1, claim: 1, reason: 1, proof: 1, created_at: 1 } }
+  ).toArray();
+
+  const gamesWithDetails = recentGames.map(b => ({
+    id: b.id,
+    mode: b.mode || 'lite',
+    amount: b.amount,
+    payout: b.payout,
+    status: b.status,
+    roomCode: b.room_code,
+    creatorId: b.creator_id,
+    creatorName: b.creator_name || ('Player' + String(b.creator_id).slice(-4)),
+    creatorPhone: b.creator_phone || '',
+    acceptorId: b.acceptor_id,
+    acceptorName: b.acceptor_name || (b.acceptor_id ? 'Player' + String(b.acceptor_id).slice(-4) : '—'),
+    acceptorPhone: b.acceptor_phone || '',
+    isCreator: b.creator_id === id,
+    winnerId: b.winner_id,
+    isWinner: b.winner_id === id,
+    isLoser: b.status === 'completed' && b.winner_id && b.winner_id !== id,
+    createdAt: b.created_at,
+    settledAt: b.settled_at,
+    claims: claims.filter(c => c.battle_id === b.id),
+  }));
+
   const devices = await col('login_events').find({ user_id: id }, { projection: { _id: 0, ip: 1, user_agent: 1, created_at: 1 } }).sort({ created_at: -1 }).limit(15).toArray();
   const refAgg = await col('referrals').aggregate([{ $match: { referrer_id: id } }, { $group: { _id: null, c: { $sum: 1 }, earned: { $sum: '$earned' } } }]).toArray();
   const watch = await col('watchlist').findOne({ user_id: id }, { projection: { _id: 0 } });
@@ -74,7 +117,7 @@ router.get('/players/:id', async (req, res) => {
     stats: { played, won, winRate: settled ? Math.round((won / settled) * 100) : 0,
       deposited: depAgg[0]?.v || 0, withdrawn: wdAgg[0]?.v || 0,
       referrals: refAgg[0]?.c || 0, referralEarned: refAgg[0]?.earned || 0 },
-    recentTx, recentGames, devices, watch: watch || null, thread: thread || null,
+    recentTx, recentGames: gamesWithDetails, devices, watch: watch || null, thread: thread || null,
   });
 });
 

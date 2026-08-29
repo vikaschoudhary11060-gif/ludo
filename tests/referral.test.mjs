@@ -120,8 +120,8 @@ test('Referral System End-to-End Test Suite', async t => {
 
   await t.test('4. Battle Completion & Referral Commission Calculation', async () => {
     const stake = 500;
-    const commissionRate = 0.02; // 2%
-    const cut = Math.round(stake * commissionRate); // ₹10
+    const commissionRate = 0.01; // 1%
+    const cut = Math.round(stake * commissionRate); // ₹5
 
     // Simulate referee completing a battle
     await db.collection('wallets').updateOne(
@@ -145,10 +145,10 @@ test('Referral System End-to-End Test Suite', async t => {
     });
 
     const parentWallet = await db.collection('wallets').findOne({ user_id: parentUser.id });
-    assert.equal(parentWallet.referral, 10, 'Parent wallet referral bucket received ₹10 commission');
+    assert.equal(parentWallet.referral, 5, 'Parent wallet referral bucket received ₹5 commission (1%)');
 
     const updatedRef = await db.collection('referrals').findOne({ referrer_id: parentUser.id, referee_id: refereeUser.id });
-    assert.equal(updatedRef.earned, 10, 'Referral document tracked ₹10 earned');
+    assert.equal(updatedRef.earned, 5, 'Referral document tracked ₹5 earned');
   });
 
   await t.test('5. Referral Dashboard Aggregation', async () => {
@@ -168,12 +168,12 @@ test('Referral System End-to-End Test Suite', async t => {
 
     assert.equal(rows.length, 1, 'Parent has 1 referee');
     assert.equal(rows[0].name, 'PlayerReferee');
-    assert.equal(rows[0].earned, 10);
+    assert.equal(rows[0].earned, 5);
   });
 
   await t.test('6. Referral Redemption to Deposit Wallet', async () => {
     const wBefore = await db.collection('wallets').findOne({ user_id: parentUser.id });
-    assert.equal(wBefore.referral, 10);
+    assert.equal(wBefore.referral, 5);
     const depositBefore = wBefore.deposit;
 
     const redeemAmount = wBefore.referral;

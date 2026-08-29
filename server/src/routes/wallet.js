@@ -33,10 +33,10 @@ router.post('/deposit', requireAuth, async (req, res) => {
   if (amount < DEPOSIT.min) return res.status(400).json({ error: `Minimum deposit is ₹${DEPOSIT.min}.` });
   if (amount > DEPOSIT.max) return res.status(400).json({ error: `Maximum deposit is ₹${DEPOSIT.max}.` });
 
-  const bonus = amount >= 500 ? Math.round(amount * 0.05) : 0;
+  const bonus = Math.floor(amount / 1000) * 50;
   await withTransaction(async session => {
     await credit(req.user.id, 'deposit', amount, 'Deposit', null, 'success', session);
-    if (bonus) await credit(req.user.id, 'deposit', bonus, 'Cashback bonus', null, 'success', session);
+    if (bonus > 0) await credit(req.user.id, 'deposit', bonus, 'Cashback bonus (₹50 per ₹1000)', null, 'success', session);
   });
   const w = await getWallet(req.user.id);
   res.json({ ok: true, credited: amount + bonus, bonus, wallet: { ...w, total: w.deposit + w.winnings } });

@@ -255,7 +255,7 @@ router.post('/disputes/:id/resolve', requireAdmin('admin'), async (req, res) => 
         for (const uid of [b.creator_id, b.acceptor_id]) {
           const u = await col('users').findOne({ id: uid }, { session });
           if (!u?.referred_by) continue;
-          const cut = Math.round(b.amount * (settings.referral_rate || 0.02));
+          const cut = Math.round(b.amount * (settings.referral_rate || 0.01));
           if (cut <= 0) continue;
           await credit(u.referred_by, 'referral', cut, `Referral bonus — dispute #${id.slice(-5)}`, id, 'success', session);
           await col('referrals').updateOne({ referrer_id: u.referred_by, referee_id: uid }, { $inc: { earned: cut } }, { session });
@@ -308,7 +308,13 @@ router.post('/deposits/:id', requireAdmin('admin'), async (req, res) => {
       if (!d) throw new Error('NOTFOUND');
       await col('deposit_requests').updateOne({ id: d.id },
         { $set: { status: approve ? 'approved' : 'rejected', settled_at: now(), note: req.body?.note ?? null } }, { session });
-      if (approve) await credit(d.user_id, 'deposit', d.amount, `Deposit verified (UTR ${d.utr})`, null, 'success', session);
+      if (approve) {
+        await credit(d.user_id, 'deposit', d.amount, `Deposit verified (UTR ${d.utr})`, null, 'success', session);
+        const bonus = Math.floor(d.amount / 1000) * 50;
+        if (bonus > 0) {
+          await credit(d.user_id, 'deposit', bonus, 'Cashback bonus (₹50 per ₹1000)', null, 'success', session);
+        }
+      }
     });
   } catch (e) {
     if (e.message === 'NOTFOUND') return res.status(404).json({ error: 'No such pending request.' });
