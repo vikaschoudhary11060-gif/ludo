@@ -11,7 +11,7 @@
      battle:leave  { id }
 */
 import { verify } from './lib/auth.js';
-import { db } from './lib/db.js';
+import { col } from './lib/db.js';
 
 export function attachRealtime(io, app) {
   // How many agent sockets are connected — surfaced to players as "we're online".
@@ -21,11 +21,11 @@ export function attachRealtime(io, app) {
     io.emit('chat:admin-online', { online: adminSockets > 0 });
   };
   // Optional auth: the lobby is public, but we tag the socket when a token is sent.
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     const token = socket.handshake.auth?.token;
     const payload = token && verify(token);
     if (payload) {
-      const user = db.prepare('SELECT id, name FROM users WHERE id = ?').get(payload.uid);
+      const user = await col('users').findOne({ id: payload.uid }, { projection: { id: 1, name: 1 } });
       if (user) socket.data.user = user;
     }
     next();
@@ -56,11 +56,11 @@ export function attachRealtime(io, app) {
       setAdminOnline();
     });
 
-    socket.on('chat:join', ({ threadId } = {}) => {
+    socket.on('chat:join', async ({ threadId } = {}) => {
       if (!Number.isInteger(threadId)) return;
       // A player may only join their own thread; agents may join any.
       if (!socket.data.isAdmin) {
-        const own = db.prepare('SELECT id FROM chat_threads WHERE user_id = ?').get(socket.data.user?.id);
+        const own = await col('chat_threads').findOne({ user_id: socket.data.user?.id }, { projection: { id: 1 } });
         if (!own || own.id !== threadId) return;
       }
       socket.join(`chat:${threadId}`);

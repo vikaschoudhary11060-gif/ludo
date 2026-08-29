@@ -1,54 +1,43 @@
-/* ============================================================
-   Live support chat — player side.
-
-   Messages persist, unread counters are per-side, and delivery is
-   pushed over Socket.IO to whichever side is not looking. Admin
-   endpoints live in routes/admin.js.
-   ============================================================ */
+/* Live support chat — player side (MongoDB). */
 import express from 'express';
 import { z } from 'zod';
-import { db, now, notify } from '../lib/db.js';
+import { col, nextId, now } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
 
 const router = express.Router();
 
 /** Every player has exactly one thread; create it lazily. */
-export function threadFor(userId) {
-  let t = db.prepare('SELECT * FROM chat_threads WHERE user_id = ?').get(userId);
+export async function threadFor(userId) {
+  let t = await col('chat_threads').findOne({ user_id: userId });
   if (!t) {
-    const info = db.prepare('INSERT INTO chat_threads (user_id, created_at) VALUES (?,?)')
-      .run(userId, now());
-    t = db.prepare('SELECT * FROM chat_threads WHERE id = ?').get(info.lastInsertRowid);
+    t = { id: await nextId('chat_threads'), user_id: userId, status: 'open', subject: null,
+          unread_user: 0, unread_admin: 0, last_message: null, last_at: null, created_at: now() };
+    await col('chat_threads').insertOne(t);
   }
   return t;
 }
 
 const shape = m => ({
   id: m.id, fromAdmin: !!m.from_admin, author: m.author, kind: m.kind,
-  body: m.body, attachment: m.attachment, duration: m.duration,
-  readAt: m.read_at, at: m.created_at,
+  body: m.body, attachment: m.attachment, duration: m.duration, readAt: m.read_at, at: m.created_at,
 });
 
-/* GET /api/chat — the caller's thread and its messages. */
-router.get('/', requireAuth, (req, res) => {
-  const t = threadFor(req.user.id);
-  const messages = db.prepare(
-    'SELECT * FROM chat_messages WHERE thread_id = ? ORDER BY created_at ASC LIMIT 300').all(t.id);
-  res.json({
-    thread: { id: t.id, status: t.status, unread: t.unread_user },
-    messages: messages.map(shape),
-    adminOnline: !!req.app.get('adminOnline'),
-  });
+/* GET /api/chat */
+router.get('/', requireAuth, async (req, res) => {
+  const t = await threadFor(req.user.id);
+  const messages = await col('chat_messages').find({ thread_id: t.id }).sort({ created_at: 1 }).limit(300).toArray();
+  res.json({ thread: { id: t.id, status: t.status, unread: t.unread_user },
+             messages: messages.map(shape), adminOnline: !!req.app.get('adminOnline') });
 });
 
 /* GET /api/chat/unread */
-router.get('/unread', requireAuth, (req, res) => {
-  const t = db.prepare('SELECT unread_user FROM chat_threads WHERE user_id = ?').get(req.user.id);
+router.get('/unread', requireAuth, async (req, res) => {
+  const t = await col('chat_threads').findOne({ user_id: req.user.id });
   res.json({ unread: t ? t.unread_user : 0 });
 });
 
-/* POST /api/chat/message  { body?, kind?, attachment?, duration? } */
-router.post('/message', requireAuth, (req, res) => {
+/* POST /api/chat/message */
+router.post('/message', requireAuth, async (req, res) => {
   const schema = z.object({
     body: z.string().trim().max(2000).optional(),
     kind: z.enum(['text', 'image', 'voice']).default('text'),
@@ -61,36 +50,31 @@ router.post('/message', requireAuth, (req, res) => {
   if (kind === 'text' && !body) return res.status(400).json({ error: 'Type a message first.' });
   if (kind !== 'text' && !attachment) return res.status(400).json({ error: 'Attachment missing.' });
 
-  const t = threadFor(req.user.id);
+  const t = await threadFor(req.user.id);
   if (t.status === 'blocked') return res.status(403).json({ error: 'This conversation is closed.' });
 
   const preview = kind === 'text' ? body : kind === 'image' ? '📷 Photo' : '🎤 Voice message';
-  const info = db.transaction(() => {
-    const i = db.prepare(`INSERT INTO chat_messages
-        (thread_id, from_admin, author, kind, body, attachment, duration, created_at)
-        VALUES (?,0,?,?,?,?,?,?)`)
-      .run(t.id, req.user.name, kind, body ?? null, attachment ?? null, duration ?? null, now());
-    db.prepare(`UPDATE chat_threads SET unread_admin = unread_admin + 1,
-                  last_message = ?, last_at = ?, status = CASE WHEN status='resolved' THEN 'open' ELSE status END
-                WHERE id = ?`).run(preview, now(), t.id);
-    return i;
-  })();
+  const msg = { id: await nextId('chat_messages'), thread_id: t.id, from_admin: 0, admin_id: null,
+    author: req.user.name, kind, body: body ?? null, attachment: attachment ?? null,
+    duration: duration ?? null, read_at: null, created_at: now() };
+  await col('chat_messages').insertOne(msg);
+  await col('chat_threads').updateOne({ id: t.id }, {
+    $inc: { unread_admin: 1 },
+    $set: { last_message: preview, last_at: now(), ...(t.status === 'resolved' ? { status: 'open' } : {}) },
+  });
 
-  const message = shape(db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(info.lastInsertRowid));
+  const message = shape(msg);
   const io = req.app.get('io');
   io?.to(`chat:${t.id}`).emit('chat:message', { threadId: t.id, message });
-  io?.to('admins').emit('chat:activity', {
-    threadId: t.id, userId: req.user.id, userName: req.user.name, preview, at: now(),
-  });
+  io?.to('admins').emit('chat:activity', { threadId: t.id, userId: req.user.id, userName: req.user.name, preview, at: now() });
   res.status(201).json({ message });
 });
 
-/* POST /api/chat/read — the player has seen the agent's replies. */
-router.post('/read', requireAuth, (req, res) => {
-  const t = threadFor(req.user.id);
-  db.prepare('UPDATE chat_threads SET unread_user = 0 WHERE id = ?').run(t.id);
-  db.prepare('UPDATE chat_messages SET read_at = ? WHERE thread_id = ? AND from_admin = 1 AND read_at IS NULL')
-    .run(now(), t.id);
+/* POST /api/chat/read */
+router.post('/read', requireAuth, async (req, res) => {
+  const t = await threadFor(req.user.id);
+  await col('chat_threads').updateOne({ id: t.id }, { $set: { unread_user: 0 } });
+  await col('chat_messages').updateMany({ thread_id: t.id, from_admin: 1, read_at: null }, { $set: { read_at: now() } });
   req.app.get('io')?.to('admins').emit('chat:read', { threadId: t.id });
   res.json({ ok: true });
 });

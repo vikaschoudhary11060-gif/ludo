@@ -1,15 +1,14 @@
-/* Battles — create, list, accept, cancel, room code, result claims.
+/* Battles — create, list, accept, cancel, room code, result claims (MongoDB).
 
-   Settlement model (better than trusting one side):
-   each player files a claim; when both agree the battle settles
-   automatically, and when they conflict it is marked `disputed`
-   for an admin to resolve. */
+   Two-sided settlement: each player files a claim; agreement settles the
+   battle, conflict marks it disputed for an admin. Money moves inside Mongo
+   transactions; notifications are sent after commit. */
 import express from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
-import { db, now, credit, debit, spendable, notify, getSettings } from '../lib/db.js';
+import { col, nextId, now, credit, debit, notify, getSettings, withTransaction } from '../lib/db.js';
 import { requireAuth, optionalAuth } from '../lib/auth.js';
-import { MODES, REFERRAL_RATE, payoutFor } from '../lib/config.js';
+import { MODES } from '../lib/config.js';
 
 const router = express.Router();
 const newId = () => crypto.randomBytes(6).toString('hex');
@@ -24,144 +23,131 @@ function shape(b) {
   };
 }
 
-const SELECT = `
-  SELECT b.*, c.name AS creator_name, a.name AS acceptor_name
-  FROM battles b
-  JOIN users c ON c.id = b.creator_id
-  LEFT JOIN users a ON a.id = b.acceptor_id`;
+/* Fetch battles with creator/acceptor names joined in. */
+async function fetchBattles(match, limit = 100) {
+  return col('battles').aggregate([
+    { $match: match },
+    { $sort: { created_at: -1 } },
+    { $limit: limit },
+    { $lookup: { from: 'users', localField: 'creator_id', foreignField: 'id', as: 'c' } },
+    { $lookup: { from: 'users', localField: 'acceptor_id', foreignField: 'id', as: 'a' } },
+    { $addFields: { creator_name: { $arrayElemAt: ['$c.name', 0] }, acceptor_name: { $arrayElemAt: ['$a.name', 0] } } },
+    { $project: { c: 0, a: 0, _id: 0 } },
+  ]).toArray();
+}
+async function fetchBattle(id) {
+  const [b] = await fetchBattles({ id }, 1);
+  return b || null;
+}
 
 /* GET /api/battles?mode=lite&status=open */
-router.get('/', optionalAuth, (req, res) => {
+router.get('/', optionalAuth, async (req, res) => {
   const mode = MODES[req.query.mode] ? req.query.mode : 'lite';
   const status = ['open', 'waiting', 'running'].includes(req.query.status) ? req.query.status : null;
-  const rows = status
-    ? db.prepare(`${SELECT} WHERE b.mode = ? AND b.status = ? ORDER BY b.created_at DESC LIMIT 100`).all(mode, status)
-    : db.prepare(`${SELECT} WHERE b.mode = ? AND b.status IN ('open','waiting','running')
-                  ORDER BY b.created_at DESC LIMIT 100`).all(mode);
+  const match = { mode, status: status ? status : { $in: ['open', 'waiting', 'running'] } };
+  const rows = await fetchBattles(match, 100);
   res.json({ battles: rows.map(shape) });
 });
 
 /* GET /api/battles/mine */
-router.get('/mine', requireAuth, (req, res) => {
-  const rows = db.prepare(`${SELECT} WHERE b.creator_id = ? OR b.acceptor_id = ?
-                           ORDER BY b.created_at DESC LIMIT 200`).all(req.user.id, req.user.id);
+router.get('/mine', requireAuth, async (req, res) => {
+  const rows = await fetchBattles({ $or: [{ creator_id: req.user.id }, { acceptor_id: req.user.id }] }, 200);
   res.json({ battles: rows.map(shape) });
 });
 
 /* GET /api/battles/:id */
-router.get('/:id', optionalAuth, (req, res) => {
-  const b = db.prepare(`${SELECT} WHERE b.id = ?`).get(req.params.id);
+router.get('/:id', optionalAuth, async (req, res) => {
+  const b = await fetchBattle(req.params.id);
   if (!b) return res.status(404).json({ error: 'Battle not found.' });
-  const claims = db.prepare('SELECT user_id, claim, reason FROM battle_claims WHERE battle_id = ?').all(b.id);
+  const claims = await col('battle_claims').find({ battle_id: b.id },
+    { projection: { _id: 0, user_id: 1, claim: 1, reason: 1 } }).toArray();
   res.json({ battle: shape(b), claims });
 });
 
 /* POST /api/battles  { mode, amount } */
-router.post('/', requireAuth, (req, res) => {
-  const schema = z.object({
-    mode: z.enum(['lite', 'rich']),
-    amount: z.number().int().positive(),
-  });
-  const parsed = schema.safeParse(req.body || {});
+router.post('/', requireAuth, async (req, res) => {
+  const parsed = z.object({ mode: z.enum(['lite', 'rich']), amount: z.number().int().positive() }).safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: 'Choose a mode and a whole-rupee amount.' });
   const { mode, amount } = parsed.data;
   const cfg = MODES[mode];
+  if (amount < cfg.min || amount > cfg.max) return res.status(400).json({ error: `Amount must be between ₹${cfg.min} and ₹${cfg.max}.` });
+  if (amount % cfg.step !== 0) return res.status(400).json({ error: `Set the battle in multiples of ${cfg.step}.` });
 
-  if (amount < cfg.min || amount > cfg.max)
-    return res.status(400).json({ error: `Amount must be between ₹${cfg.min} and ₹${cfg.max}.` });
-  if (amount % cfg.step !== 0)
-    return res.status(400).json({ error: `Set the battle in multiples of ${cfg.step}.` });
-
-  const settings = getSettings();
+  const settings = await getSettings();
   const id = newId();
   try {
-    db.transaction(() => {
-      // Guard 1: a user may only have N battles open at once (reference: 2).
-      const openCount = db.prepare(
-        "SELECT COUNT(*) c FROM battles WHERE creator_id = ? AND status IN ('open','waiting')"
-      ).get(req.user.id).c;
+    await withTransaction(async session => {
+      const openCount = await col('battles').countDocuments(
+        { creator_id: req.user.id, status: { $in: ['open', 'waiting'] } }, { session });
       if (openCount >= settings.battle_limit) throw new Error('LIMIT');
-
-      // Guard 2: no two open battles from the same user at the same amount.
-      const dupe = db.prepare(
-        "SELECT 1 FROM battles WHERE creator_id = ? AND amount = ? AND status = 'open'"
-      ).get(req.user.id, amount);
+      const dupe = await col('battles').findOne({ creator_id: req.user.id, amount, status: 'open' }, { session });
       if (dupe) throw new Error('DUPLICATE');
-
-      if (spendable(req.user.id) < amount) throw new Error('INSUFFICIENT');
-      if (!debit(req.user.id, amount, 'Battle stake', id)) throw new Error('INSUFFICIENT');
-      db.prepare(`INSERT INTO battles (id, mode, amount, status, creator_id, created_at)
-                  VALUES (?,?,?,'open',?,?)`).run(id, mode, amount, req.user.id, now());
-    })();
+      if (!(await debit(req.user.id, amount, 'Battle stake', id, session))) throw new Error('INSUFFICIENT');
+      await col('battles').insertOne({
+        id, mode, amount, status: 'open', creator_id: req.user.id, acceptor_id: null,
+        room_code: null, winner_id: null, payout: null, created_at: now(), settled_at: null,
+      }, { session });
+    });
   } catch (e) {
     const map = {
-      LIMIT:     [409, `You can set maximum ${settings.battle_limit} battles.`],
+      LIMIT: [409, `You can set maximum ${settings.battle_limit} battles.`],
       DUPLICATE: [409, 'You cannot create two battles for the same amount.'],
       INSUFFICIENT: [400, 'Insufficient balance. Add cash to continue.'],
     };
     if (map[e.message]) return res.status(map[e.message][0]).json({ error: map[e.message][1] });
     throw e;
   }
-
-  const battle = shape(db.prepare(`${SELECT} WHERE b.id = ?`).get(id));
+  const battle = shape(await fetchBattle(id));
   req.app.get('io')?.emit('battle:created', battle);
   res.status(201).json({ battle });
 });
 
 /* POST /api/battles/:id/accept */
-router.post('/:id/accept', requireAuth, (req, res) => {
+router.post('/:id/accept', requireAuth, async (req, res) => {
   const id = req.params.id;
+  let creatorId, amount;
   try {
-    db.transaction(() => {
-      const b = db.prepare('SELECT * FROM battles WHERE id = ?').get(id);
+    await withTransaction(async session => {
+      const b = await col('battles').findOne({ id }, { session });
       if (!b) throw new Error('NOTFOUND');
       if (b.status !== 'open') throw new Error('CLOSED');
       if (b.creator_id === req.user.id) throw new Error('OWN');
-      const already = db.prepare(
-        "SELECT 1 FROM battles WHERE acceptor_id = ? AND status IN ('waiting','running')"
-      ).get(req.user.id);
+      const already = await col('battles').findOne({ acceptor_id: req.user.id, status: { $in: ['waiting', 'running'] } }, { session });
       if (already) throw new Error('ENROLLED');
-      if (!debit(req.user.id, b.amount, 'Battle stake', id)) throw new Error('INSUFFICIENT');
-      db.prepare("UPDATE battles SET acceptor_id = ?, status = 'waiting' WHERE id = ?")
-        .run(req.user.id, id);
-      notify(b.creator_id, 'Challenge accepted',
-             `${req.user.name} joined your ₹${b.amount} battle. Set the room code.`);
-    })();
+      if (!(await debit(req.user.id, b.amount, 'Battle stake', id, session))) throw new Error('INSUFFICIENT');
+      await col('battles').updateOne({ id }, { $set: { acceptor_id: req.user.id, status: 'waiting' } }, { session });
+      creatorId = b.creator_id; amount = b.amount;
+    });
   } catch (e) {
-    const map = {
-      NOTFOUND: [404, 'Battle not found.'],
-      CLOSED:   [409, 'That battle is no longer open.'],
-      OWN:      [400, 'You created this battle.'],
-      INSUFFICIENT: [400, 'Insufficient balance. Add cash to continue.'],
-      ENROLLED: [409, 'You have already enrolled in another battle.'],
-    };
+    const map = { NOTFOUND: [404, 'Battle not found.'], CLOSED: [409, 'That battle is no longer open.'],
+      OWN: [400, 'You created this battle.'], INSUFFICIENT: [400, 'Insufficient balance. Add cash to continue.'],
+      ENROLLED: [409, 'You have already enrolled in another battle.'] };
     if (map[e.message]) return res.status(map[e.message][0]).json({ error: map[e.message][1] });
     throw e;
   }
-
-  const battle = shape(db.prepare(`${SELECT} WHERE b.id = ?`).get(id));
+  await notify(creatorId, 'Challenge accepted', `${req.user.name} joined your ₹${amount} battle. Set the room code.`);
+  const battle = shape(await fetchBattle(id));
   const io = req.app.get('io');
   io?.to(`battle:${id}`).emit('battle:updated', battle);
   io?.emit('battle:removed', { id });
   res.json({ battle });
 });
 
-/* POST /api/battles/:id/cancel — creator only, while still open. */
-router.post('/:id/cancel', requireAuth, (req, res) => {
+/* POST /api/battles/:id/cancel */
+router.post('/:id/cancel', requireAuth, async (req, res) => {
   const id = req.params.id;
   try {
-    db.transaction(() => {
-      const b = db.prepare('SELECT * FROM battles WHERE id = ?').get(id);
+    await withTransaction(async session => {
+      const b = await col('battles').findOne({ id }, { session });
       if (!b) throw new Error('NOTFOUND');
       if (b.creator_id !== req.user.id) throw new Error('FORBIDDEN');
       if (b.status !== 'open') throw new Error('CLOSED');
-      credit(req.user.id, 'deposit', b.amount, 'Battle cancelled — refund', id);
-      db.prepare("UPDATE battles SET status = 'cancelled', settled_at = ? WHERE id = ?").run(now(), id);
-    })();
+      await credit(req.user.id, 'deposit', b.amount, 'Battle cancelled — refund', id, 'success', session);
+      await col('battles').updateOne({ id }, { $set: { status: 'cancelled', settled_at: now() } }, { session });
+    });
   } catch (e) {
-    const map = { NOTFOUND: [404, 'Battle not found.'],
-                  FORBIDDEN: [403, 'Only the creator can cancel.'],
-                  CLOSED: [409, 'This battle can no longer be cancelled.'] };
+    const map = { NOTFOUND: [404, 'Battle not found.'], FORBIDDEN: [403, 'Only the creator can cancel.'],
+      CLOSED: [409, 'This battle can no longer be cancelled.'] };
     if (map[e.message]) return res.status(map[e.message][0]).json({ error: map[e.message][1] });
     throw e;
   }
@@ -169,145 +155,126 @@ router.post('/:id/cancel', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-/* POST /api/battles/:id/reject — creator sends the joiner away; their stake is refunded
-   and the battle goes back on the board. Mirrors the reference's challange/reject. */
-router.post('/:id/reject', requireAuth, (req, res) => {
+/* POST /api/battles/:id/reject */
+router.post('/:id/reject', requireAuth, async (req, res) => {
   const id = req.params.id;
+  let acceptorId, amount;
   try {
-    db.transaction(() => {
-      const b = db.prepare('SELECT * FROM battles WHERE id = ?').get(id);
+    await withTransaction(async session => {
+      const b = await col('battles').findOne({ id }, { session });
       if (!b) throw new Error('NOTFOUND');
       if (b.creator_id !== req.user.id) throw new Error('FORBIDDEN');
       if (b.status !== 'waiting') throw new Error('WRONGSTATE');
-      credit(b.acceptor_id, 'deposit', b.amount, 'Challenge rejected — refund', id);
-      notify(b.acceptor_id, 'Challenge rejected', `${req.user.name} rejected your request. ₹${b.amount} refunded.`);
-      db.prepare("UPDATE battles SET acceptor_id = NULL, status = 'open' WHERE id = ?").run(id);
-    })();
+      await credit(b.acceptor_id, 'deposit', b.amount, 'Challenge rejected — refund', id, 'success', session);
+      await col('battles').updateOne({ id }, { $set: { acceptor_id: null, status: 'open' } }, { session });
+      acceptorId = b.acceptor_id; amount = b.amount;
+    });
   } catch (e) {
-    const map = { NOTFOUND: [404, 'Battle not found.'],
-                  FORBIDDEN: [403, 'Only the creator can reject.'],
-                  WRONGSTATE: [409, 'Nobody is waiting to be rejected.'] };
+    const map = { NOTFOUND: [404, 'Battle not found.'], FORBIDDEN: [403, 'Only the creator can reject.'],
+      WRONGSTATE: [409, 'Nobody is waiting to be rejected.'] };
     if (map[e.message]) return res.status(map[e.message][0]).json({ error: map[e.message][1] });
     throw e;
   }
-  const battle = shape(db.prepare(`${SELECT} WHERE b.id = ?`).get(id));
+  await notify(acceptorId, 'Challenge rejected', `${req.user.name} rejected your request. ₹${amount} refunded.`);
+  const battle = shape(await fetchBattle(id));
   const io = req.app.get('io');
   io?.to(`battle:${id}`).emit('battle:updated', battle);
-  io?.emit('battle:created', battle);        // back on the open board
+  io?.emit('battle:created', battle);
   res.json({ battle });
 });
 
-/* POST /api/battles/:id/room  { roomCode } — creator only. */
-router.post('/:id/room', requireAuth, (req, res) => {
+/* POST /api/battles/:id/room  { roomCode } */
+router.post('/:id/room', requireAuth, async (req, res) => {
   const code = String(req.body?.roomCode ?? '');
-  if (!/^\d{8}$/.test(code))
-    return res.status(400).json({ error: 'Invalid room code. It must be exactly 8 digits.' });
-
-  const b = db.prepare('SELECT * FROM battles WHERE id = ?').get(req.params.id);
+  if (!/^\d{8}$/.test(code)) return res.status(400).json({ error: 'Invalid room code. It must be exactly 8 digits.' });
+  const b = await col('battles').findOne({ id: req.params.id });
   if (!b) return res.status(404).json({ error: 'Battle not found.' });
   if (b.creator_id !== req.user.id) return res.status(403).json({ error: 'Only the creator sets the room code.' });
   if (b.status !== 'waiting') return res.status(409).json({ error: 'Wait for an opponent to join first.' });
-
-  db.prepare("UPDATE battles SET room_code = ?, status = 'running' WHERE id = ?").run(code, b.id);
-  if (b.acceptor_id) notify(b.acceptor_id, 'Room code ready', `Join room ${code} to start the match.`);
-
-  const battle = shape(db.prepare(`${SELECT} WHERE b.id = ?`).get(b.id));
+  await col('battles').updateOne({ id: b.id }, { $set: { room_code: code, status: 'running' } });
+  if (b.acceptor_id) await notify(b.acceptor_id, 'Room code ready', `Join room ${code} to start the match.`);
+  const battle = shape(await fetchBattle(b.id));
   req.app.get('io')?.to(`battle:${b.id}`).emit('battle:updated', battle);
   res.json({ battle });
 });
 
-/* POST /api/battles/:id/result  { claim: won|lost|cancel, reason?, proof? } */
-router.post('/:id/result', requireAuth, (req, res) => {
-  const schema = z.object({
+/* POST /api/battles/:id/result  { claim, reason?, proof? } */
+router.post('/:id/result', requireAuth, async (req, res) => {
+  const parsed = z.object({
     claim: z.enum(['won', 'lost', 'cancel']),
     reason: z.string().max(200).optional(),
     proof: z.string().max(500).optional(),
-  });
-  const parsed = schema.safeParse(req.body || {});
+  }).safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: 'Choose won, lost or cancel.' });
   const { claim, reason, proof } = parsed.data;
   const id = req.params.id;
+  const settings = await getSettings();
+  const notes = [];   // sent after the transaction commits
 
   let outcome;
   try {
-    outcome = db.transaction(() => {
-      const b = db.prepare('SELECT * FROM battles WHERE id = ?').get(id);
+    outcome = await withTransaction(async session => {
+      const b = await col('battles').findOne({ id }, { session });
       if (!b) throw new Error('NOTFOUND');
       if (![b.creator_id, b.acceptor_id].includes(req.user.id)) throw new Error('FORBIDDEN');
       if (b.status !== 'running') throw new Error('NOTRUNNING');
       if (claim === 'won' && !proof) throw new Error('PROOF');
 
-      const existing = db.prepare(
-        'SELECT claim FROM battle_claims WHERE battle_id = ? AND user_id = ?'
-      ).get(id, req.user.id);
+      const existing = await col('battle_claims').findOne({ battle_id: id, user_id: req.user.id }, { session });
       if (existing) throw new Error('ALREADY:' + existing.claim);
+      await col('battle_claims').insertOne({
+        battle_id: id, user_id: req.user.id, claim, reason: reason ?? null, proof: proof ?? null, created_at: now(),
+      }, { session });
 
-      db.prepare(`INSERT INTO battle_claims (battle_id, user_id, claim, reason, proof, created_at)
-                  VALUES (?,?,?,?,?,?)
-                  ON CONFLICT(battle_id, user_id) DO UPDATE SET
-                    claim=excluded.claim, reason=excluded.reason, proof=excluded.proof`)
-        .run(id, req.user.id, claim, reason ?? null, proof ?? null, now());
-
-      const claims = db.prepare('SELECT user_id, claim FROM battle_claims WHERE battle_id = ?').all(id);
-      if (claims.length < 2) return { state: 'pending' };   // wait for the opponent
+      const claims = await col('battle_claims').find({ battle_id: id }, { session }).toArray();
+      if (claims.length < 2) return { state: 'pending' };
 
       const byUser = Object.fromEntries(claims.map(c => [c.user_id, c.claim]));
       const a = b.creator_id, c2 = b.acceptor_id;
 
-      // Both asked to cancel -> refund both.
       if (byUser[a] === 'cancel' && byUser[c2] === 'cancel') {
-        credit(a, 'deposit', b.amount, 'Battle cancelled — refund', id);
-        credit(c2, 'deposit', b.amount, 'Battle cancelled — refund', id);
-        db.prepare("UPDATE battles SET status='cancelled', settled_at=? WHERE id=?").run(now(), id);
-        notify(a, 'Battle cancelled', 'Your stake was refunded.');
-        notify(c2, 'Battle cancelled', 'Your stake was refunded.');
+        await credit(a, 'deposit', b.amount, 'Battle cancelled — refund', id, 'success', session);
+        await credit(c2, 'deposit', b.amount, 'Battle cancelled — refund', id, 'success', session);
+        await col('battles').updateOne({ id }, { $set: { status: 'cancelled', settled_at: now() } }, { session });
+        notes.push([a, 'Battle cancelled', 'Your stake was refunded.'], [c2, 'Battle cancelled', 'Your stake was refunded.']);
         return { state: 'cancelled' };
       }
 
-      // Exactly one winner and one loser -> settle.
       const winner = byUser[a] === 'won' && byUser[c2] === 'lost' ? a
-                   : byUser[c2] === 'won' && byUser[a] === 'lost' ? c2
-                   : null;
+                   : byUser[c2] === 'won' && byUser[a] === 'lost' ? c2 : null;
       if (!winner) {
-        db.prepare("UPDATE battles SET status='disputed' WHERE id=?").run(id);
-        notify(a,  'Result under review', 'Both players claimed differently. Support will review the proof.');
-        notify(c2, 'Result under review', 'Both players claimed differently. Support will review the proof.');
+        await col('battles').updateOne({ id }, { $set: { status: 'disputed' } }, { session });
+        notes.push([a, 'Result under review', 'Both players claimed differently. Support will review the proof.'],
+                   [c2, 'Result under review', 'Both players claimed differently. Support will review the proof.']);
         return { state: 'disputed' };
       }
 
-      const payout = Math.round(b.amount * 2 * (1 - getSettings().commission));
-      credit(winner, 'winnings', payout, `Battle won — #${id.slice(-5)}`, id);
-      db.prepare("UPDATE battles SET status='completed', winner_id=?, payout=?, settled_at=? WHERE id=?")
-        .run(winner, payout, now(), id);
-      notify(winner, 'You won!', `₹${payout} credited for battle #${id.slice(-5)}.`);
-      notify(winner === a ? c2 : a, 'Battle lost', 'Better luck next time.');
+      const payout = Math.round(b.amount * 2 * (1 - settings.commission));
+      await credit(winner, 'winnings', payout, `Battle won — #${id.slice(-5)}`, id, 'success', session);
+      await col('battles').updateOne({ id }, { $set: { status: 'completed', winner_id: winner, payout, settled_at: now() } }, { session });
+      notes.push([winner, 'You won!', `₹${payout} credited for battle #${id.slice(-5)}.`],
+                 [winner === a ? c2 : a, 'Battle lost', 'Better luck next time.']);
 
-      // Referral commission on the stake, paid to whoever referred each player.
       for (const uid of [a, c2]) {
-        const u = db.prepare('SELECT referred_by FROM users WHERE id = ?').get(uid);
+        const u = await col('users').findOne({ id: uid }, { session });
         if (!u?.referred_by) continue;
-        const cut = Math.round(b.amount * getSettings().referral_rate);
+        const cut = Math.round(b.amount * settings.referral_rate);
         if (cut <= 0) continue;
-        credit(u.referred_by, 'referral', cut, 'Referral commission', id);
-        db.prepare('UPDATE referrals SET earned = earned + ? WHERE referrer_id = ? AND referee_id = ?')
-          .run(cut, u.referred_by, uid);
+        await credit(u.referred_by, 'referral', cut, 'Referral commission', id, 'success', session);
+        await col('referrals').updateOne({ referrer_id: u.referred_by, referee_id: uid }, { $inc: { earned: cut } }, { session });
       }
       return { state: 'completed', winner, payout };
-    })();
+    });
   } catch (e) {
-    const map = {
-      NOTFOUND: [404, 'Battle not found.'],
-      FORBIDDEN: [403, 'You are not in this battle.'],
-      NOTRUNNING: [409, 'This battle is not in progress.'],
-      PROOF: [400, 'Attach a screenshot to claim a win.'],
-    };
     if (e.message.startsWith('ALREADY:'))
       return res.status(409).json({ error: `You have already updated your battle result for ${e.message.slice(8).toUpperCase()}.` });
+    const map = { NOTFOUND: [404, 'Battle not found.'], FORBIDDEN: [403, 'You are not in this battle.'],
+      NOTRUNNING: [409, 'This battle is not in progress.'], PROOF: [400, 'Attach a screenshot to claim a win.'] };
     if (map[e.message]) return res.status(map[e.message][0]).json({ error: map[e.message][1] });
     throw e;
   }
-
-  const battle = shape(db.prepare(`${SELECT} WHERE b.id = ?`).get(id));
+  for (const [uid, title, body] of notes) await notify(uid, title, body);
+  const battle = shape(await fetchBattle(id));
   req.app.get('io')?.to(`battle:${id}`).emit('battle:updated', battle);
   res.json({ battle, ...outcome });
 });

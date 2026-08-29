@@ -52,7 +52,7 @@ export async function credit(userId, bucket, amount, note, refId = null, status 
 
 /** Spend deposit first, then winnings. Returns false if short. */
 export async function debit(userId, amount, note, refId = null, session = null) {
-  const w = await getWallet(userId);
+  const w = await col('wallets').findOne({ user_id: userId }, session ? { session } : undefined);
   if (!w || w.deposit + w.winnings < amount) return false;
   const fromDeposit = Math.min(w.deposit, amount);
   const fromWinnings = amount - fromDeposit;

@@ -8,7 +8,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import multerLib from 'multer';
-import { db, now, notify } from '../lib/db.js';
+import { col, now, nextId, notify } from '../lib/db.js';
 import { parseOfflineEkyc, mobileMatches, certAvailable } from '../lib/aadhaar-offline.js';
 import { requireAuth } from '../lib/auth.js';
 
@@ -53,22 +53,22 @@ router.post('/proof', requireAuth, handle('file'), (req, res) => {
 });
 
 /* POST /api/uploads/avatar  (multipart: file) -> { url } */
-router.post('/avatar', requireAuth, handle('file'), (req, res) => {
+router.post('/avatar', requireAuth, handle('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Choose an image.' });
   const url = `/uploads/${req.file.filename}`;
-  db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(url, req.user.id);
+  await col('users').updateOne({ id: req.user.id }, { $set: { avatar_url: url } });
   res.status(201).json({ url });
 });
 
 /* POST /api/uploads/kyc/:slot  slot = front | back | selfie */
-router.post('/kyc/:slot', requireAuth, handle('file'), (req, res) => {
+router.post('/kyc/:slot', requireAuth, handle('file'), async (req, res) => {
   const slot = req.params.slot;
   if (!['front', 'back', 'selfie'].includes(slot)) return res.status(400).json({ error: 'Unknown document slot.' });
   if (!req.file) return res.status(400).json({ error: 'Choose a file.' });
-  db.prepare(`INSERT INTO kyc_documents (user_id, slot, path, created_at) VALUES (?,?,?,?)
-              ON CONFLICT(user_id, slot) DO UPDATE SET path = excluded.path, created_at = excluded.created_at`)
-    .run(req.user.id, slot, `/uploads/${req.file.filename}`, now());
-  res.status(201).json({ url: `/uploads/${req.file.filename}`, slot });
+  const path = `/uploads/${req.file.filename}`;
+  await col('kyc_documents').updateOne({ user_id: req.user.id, slot },
+    { $set: { path, created_at: now() }, $setOnInsert: { user_id: req.user.id, slot } }, { upsert: true });
+  res.status(201).json({ url: path, slot });
 });
 
 /* ---------- offline Aadhaar eKYC (free, no UIDAI licence) ---------- */
@@ -81,7 +81,7 @@ const zipUpload = multerLib({
 
 /* POST /api/uploads/ekyc   multipart: file=<zip>, shareCode=<4 chars> */
 router.post('/ekyc', requireAuth, (req, res) => {
-  zipUpload(req, res, err => {
+  zipUpload(req, res, async err => {
     if (err) return res.status(400).json({ error: 'Upload failed. Try again.' });
     if (!req.file) return res.status(400).json({ error: 'Choose your offline eKYC ZIP file.' });
 
@@ -107,13 +107,12 @@ router.post('/ekyc', requireAuth, (req, res) => {
     // Auto-approve only when UIDAI's signature checks out AND the mobile matches.
     const autoApprove = data.verified && ownsNumber;
 
-    db.prepare(`UPDATE users SET kyc_status = ?, kyc_method = 'offline-ekyc',
-                  legal_name = ?, kyc_reference = ?, kyc_masked = ?, kyc_dob = ?,
-                  kyc_verified_at = ? WHERE id = ?`)
-      .run(autoApprove ? 'done' : 'pending', data.name, data.referenceId,
-           data.maskedAadhaar, data.dob, autoApprove ? now() : null, req.user.id);
+    await col('users').updateOne({ id: req.user.id }, { $set: {
+      kyc_status: autoApprove ? 'done' : 'pending', kyc_method: 'offline-ekyc',
+      legal_name: data.name, kyc_reference: data.referenceId, kyc_masked: data.maskedAadhaar,
+      kyc_dob: data.dob, kyc_verified_at: autoApprove ? now() : null } });
 
-    notify(req.user.id,
+    await notify(req.user.id,
       autoApprove ? 'KYC verified' : 'KYC submitted',
       autoApprove ? 'Your identity is verified. Withdrawals are unlocked.'
                   : 'We received your documents. A reviewer will confirm shortly.');

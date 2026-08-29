@@ -15,18 +15,18 @@ const subSchema = z.object({
 });
 
 /* POST /api/push/subscribe */
-router.post('/subscribe', requireAuth, (req, res) => {
+router.post('/subscribe', requireAuth, async (req, res) => {
   const parsed = subSchema.safeParse(req.body?.subscription ?? req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid subscription.' });
-  saveSubscription(req.user.id, parsed.data);
+  await saveSubscription(req.user.id, parsed.data);
   res.status(201).json({ ok: true });
 });
 
 /* POST /api/push/unsubscribe */
-router.post('/unsubscribe', requireAuth, (req, res) => {
+router.post('/unsubscribe', requireAuth, async (req, res) => {
   const endpoint = req.body?.endpoint;
   if (typeof endpoint !== 'string') return res.status(400).json({ error: 'Endpoint required.' });
-  removeSubscription(endpoint);
+  await removeSubscription(endpoint);
   res.json({ ok: true });
 });
 

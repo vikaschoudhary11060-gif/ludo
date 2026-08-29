@@ -1,20 +1,23 @@
-/* Leaderboard — ranked by battles won in the selected window. */
+/* Leaderboard — ranked by battles won in the selected window (MongoDB). */
 import express from 'express';
-import { db } from '../lib/db.js';
+import { col } from '../lib/db.js';
 import { optionalAuth } from '../lib/auth.js';
 
 const router = express.Router();
 const WINDOWS = { today: 864e5, week: 7 * 864e5, all: null };
 
-router.get('/', optionalAuth, (req, res) => {
+router.get('/', optionalAuth, async (req, res) => {
   const range = WINDOWS[req.query.range] !== undefined ? req.query.range : 'today';
   const since = WINDOWS[range] ? Date.now() - WINDOWS[range] : 0;
 
-  const rows = db.prepare(`
-    SELECT u.id, u.name, COUNT(b.id) AS wins, COALESCE(SUM(b.payout),0) AS earned
-    FROM battles b JOIN users u ON u.id = b.winner_id
-    WHERE b.status = 'completed' AND b.settled_at >= ?
-    GROUP BY u.id ORDER BY wins DESC, earned DESC LIMIT 100`).all(since);
+  const rows = await col('battles').aggregate([
+    { $match: { status: 'completed', settled_at: { $gte: since }, winner_id: { $ne: null } } },
+    { $group: { _id: '$winner_id', wins: { $sum: 1 }, earned: { $sum: { $ifNull: ['$payout', 0] } } } },
+    { $sort: { wins: -1, earned: -1 } },
+    { $limit: 100 },
+    { $lookup: { from: 'users', localField: '_id', foreignField: 'id', as: 'u' } },
+    { $project: { _id: 0, id: '$_id', name: { $ifNull: [{ $arrayElemAt: ['$u.name', 0] }, '—'] }, wins: 1, earned: 1 } },
+  ]).toArray();
 
   const leaders = rows.map((r, i) => ({ rank: i + 1, ...r }));
   const me = req.user ? leaders.find(l => l.id === req.user.id) || null : null;
