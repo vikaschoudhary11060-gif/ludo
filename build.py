@@ -16,10 +16,10 @@ FRAG = ROOT / 'src' / 'pages'
 SITE = 'Khelbro'
 TAGLINE = 'Play Ludo. Climb the board.'
 # ⚠️ DEPLOY: change this to your real domain before building for production.
-BASE_URL = 'https://khelbro.example'
+BASE_URL = 'https://ludo-ludo19.vercel.app'
 TWITTER = '@khelbro'   # your Twitter/X handle, or '' to omit
 # ⚠️ DEPLOY: your API server's public origin (no trailing slash).
-API_URL = 'http://localhost:4000'
+API_URL = 'https://ludo-qu3q.onrender.com'
 
 # name, file, nav label, icon, in bottom nav?
 NAV = [

@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const BASE = (window.KHELBRO_API || 'http://localhost:4000') + '/api';
+  const BASE = (window.KHELBRO_API || 'https://ludo-qu3q.onrender.com') + '/api';
   const TOKEN_KEY = 'khelbro.token';
 
   const getToken = () => localStorage.getItem(TOKEN_KEY);
@@ -171,7 +171,7 @@
        Returns null when the library is absent. */
     connectRealtime(handlers = {}) {
       if (typeof window.io !== 'function') return null;
-      const socket = window.io(window.KHELBRO_API || 'http://localhost:4000', {
+      const socket = window.io(window.KHELBRO_API || 'https://ludo-qu3q.onrender.com', {
         auth: { token: getToken() },
         transports: ['websocket', 'polling'],
       });
