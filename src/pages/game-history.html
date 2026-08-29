@@ -1,0 +1,32 @@
+      <section class="border-b border-line bg-surface px-4 py-3">
+        <h1 class="sr-only">Game history</h1>
+        <div class="flex gap-2 overflow-x-auto" role="group" aria-label="Filter games">
+          <button class="chip is-active" type="button" data-filter="all">&#128203; All</button>
+          <button class="chip" type="button" data-filter="completed">&#9989; Completed</button>
+          <button class="chip" type="button" data-filter="cancelled">&#10060; Cancelled</button>
+          <button class="chip" type="button" data-filter="running">&#8987; Running</button>
+        </div>
+      </section>
+
+      <div id="gh-skeleton" class="section space-y-2" aria-hidden="true">
+        <div class="skeleton h-20 w-full rounded-card"></div>
+        <div class="skeleton h-20 w-full rounded-card"></div>
+        <div class="skeleton h-20 w-full rounded-card"></div>
+      </div>
+
+      <div id="gh-content" hidden>
+        <section class="section">
+          <ul class="space-y-2.5" id="gh-list" data-stagger></ul>
+          <div class="empty-state" id="gh-empty" hidden>
+            <span class="grid h-20 w-20 place-items-center rounded-full bg-surface-page text-[40px]" aria-hidden="true">&#127918;</span>
+            <p class="empty-state__title">No Game History</p>
+            <p class="empty-state__text">You have not played any battles yet.</p>
+            <a class="btn btn-primary mt-2" href="index.html#play">Play a battle</a>
+          </div>
+          <div class="mt-5 flex items-center justify-between">
+            <button class="btn btn-outline !min-h-[40px] !px-4 !text-meta" type="button" id="gh-prev" disabled>Previous</button>
+            <span class="text-meta text-muted">Page <span id="gh-page">1</span> of <span id="gh-pages">1</span></span>
+            <button class="btn btn-outline !min-h-[40px] !px-4 !text-meta" type="button" id="gh-next" disabled>Next</button>
+          </div>
+        </section>
+      </div>

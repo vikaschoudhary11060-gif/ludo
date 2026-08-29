@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Khelbro mark">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd54f"/><stop offset=".55" stop-color="#f4bc41"/><stop offset="1" stop-color="#e0a020"/>
+    </linearGradient>
+    <linearGradient id="s" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#d8dde3"/><stop offset="1" stop-color="#9aa5b1"/>
+    </linearGradient>
+    <linearGradient id="b" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3d80c5"/><stop offset="1" stop-color="#1b2f5c"/>
+    </linearGradient>
+  </defs>
+  <!-- shield -->
+  <path d="M48 3 89 15v37c0 22-17 34-41 41C24 86 7 74 7 52V15z" fill="url(#b)"/>
+  <path d="M48 3 89 15v37c0 22-17 34-41 41C24 86 7 74 7 52V15z" fill="none" stroke="url(#g)" stroke-width="3.5"/>
+  <!-- swoosh -->
+  <path d="M14 58c14 12 54 12 70-8-8 22-30 32-48 29-11-2-19-9-22-21z" fill="url(#g)" opacity=".92"/>
+  <!-- crown -->
+  <path d="M31 27l7 8 10-12 10 12 7-8 3 15H28z" fill="url(#g)"/>
+  <circle cx="31" cy="24" r="3" fill="#ffd54f"/><circle cx="48" cy="20" r="3.4" fill="#ffd54f"/><circle cx="65" cy="24" r="3" fill="#ffd54f"/>
+  <!-- K -->
+  <path d="M36 46h8v10l9-10h10L51 59l12 15H52l-8-11v11h-8z" fill="url(#s)"/>
+  <!-- tokens -->
+  <circle cx="70" cy="47" r="4.6" fill="#e33d3d"/>
+  <circle cx="26" cy="47" r="4.6" fill="#28a745"/>
+</svg>

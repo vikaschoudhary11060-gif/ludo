@@ -1,0 +1,145 @@
+      <section class="bg-brand px-4 py-7 text-white">
+        <p class="pill-label text-gold-light">Rules</p>
+        <h1 class="mt-1 font-display text-h1 text-white">How to play Ludo</h1>
+        <p class="mt-2 max-w-md text-body-sm text-white/85">
+          Ludo takes two minutes to learn. Here is everything Khelbro enforces at the table.
+        </p>
+      </section>
+
+      <!-- Jump links -->
+      <nav class="sticky top-header z-20 border-b border-line bg-surface/95 backdrop-blur"
+           aria-label="Sections">
+        <ul class="flex gap-2 overflow-x-auto px-4 py-3">
+          <li><a class="chip" href="#basics">Basics</a></li>
+          <li><a class="chip" href="#turn">Your turn</a></li>
+          <li><a class="chip" href="#capture">Capture</a></li>
+          <li><a class="chip" href="#safe">Safe squares</a></li>
+          <li><a class="chip" href="#home">Getting home</a></li>
+          <li><a class="chip" href="#tips">Tips</a></li>
+        </ul>
+      </nav>
+
+      <section class="section" id="basics">
+        <h2 class="section-title">The basics</h2>
+        <p class="mt-2 text-body text-ink">
+          The board is a 15&times;15 cross. Each of the four colours &mdash; red, green,
+          yellow and blue &mdash; has four tokens, a base, a coloured home column and a
+          shared home triangle in the middle.
+        </p>
+        <div class="mt-4 grid grid-cols-2 gap-3">
+          <div class="rounded-tile border border-line p-3">
+            <p class="pill-label">Track</p><p class="mt-1 text-body font-bold text-ink">52 squares</p>
+            <p class="text-meta text-muted">One full lap of the board.</p>
+          </div>
+          <div class="rounded-tile border border-line p-3">
+            <p class="pill-label">Home column</p><p class="mt-1 text-body font-bold text-ink">6 squares</p>
+            <p class="text-meta text-muted">Your colour only. Nobody can enter yours.</p>
+          </div>
+          <div class="rounded-tile border border-line p-3">
+            <p class="pill-label">Tokens each</p><p class="mt-1 text-body font-bold text-ink">4</p>
+            <p class="text-meta text-muted">All four must finish to win.</p>
+          </div>
+          <div class="rounded-tile border border-line p-3">
+            <p class="pill-label">Safe squares</p><p class="mt-1 text-body font-bold text-ink">8 starred</p>
+            <p class="text-meta text-muted">No captures allowed on these.</p>
+          </div>
+        </div>
+      </section>
+
+      <div class="divider-x"></div>
+
+      <section class="section" id="turn">
+        <h2 class="section-title">Taking your turn</h2>
+        <ul class="mt-3 space-y-3">
+          <li class="flex gap-3"><span class="mt-1 h-2 w-2 shrink-0 rounded-full bg-brand"></span>
+            <p class="text-body text-ink"><strong>Roll the dice.</strong> You get one roll per turn unless you roll a six.</p></li>
+          <li class="flex gap-3"><span class="mt-1 h-2 w-2 shrink-0 rounded-full bg-brand"></span>
+            <p class="text-body text-ink"><strong>A six unlocks a token.</strong> Move a token out of base onto your start square, or advance one already on the track.</p></li>
+          <li class="flex gap-3"><span class="mt-1 h-2 w-2 shrink-0 rounded-full bg-brand"></span>
+            <p class="text-body text-ink"><strong>A six earns another roll.</strong> Roll three sixes in a row and the turn is forfeited &mdash; a standard anti-stalling rule.</p></li>
+          <li class="flex gap-3"><span class="mt-1 h-2 w-2 shrink-0 rounded-full bg-brand"></span>
+            <p class="text-body text-ink"><strong>No legal move?</strong> The turn passes automatically.</p></li>
+        </ul>
+        <div class="mt-4 rounded-tile border-l-4 border-gold bg-gold/10 p-3">
+          <p class="text-body-sm text-ink"><strong>On Khelbro:</strong> legal moves are highlighted on the board,
+          so you never have to work out which token can move.</p>
+        </div>
+      </section>
+
+      <div class="divider-x"></div>
+
+      <section class="section" id="capture">
+        <h2 class="section-title">Capturing</h2>
+        <p class="mt-2 text-body text-ink">
+          Land exactly on a square holding a single opponent token and it goes straight
+          back to its base. It has to be freed by a six all over again.
+        </p>
+        <p class="mt-2 text-body text-ink">You cannot capture:</p>
+        <ul class="mt-2 space-y-2 text-body text-ink">
+          <li class="flex gap-2"><span class="text-live">&times;</span> on a starred safe square</li>
+          <li class="flex gap-2"><span class="text-live">&times;</span> your own tokens (they stack instead)</li>
+          <li class="flex gap-2"><span class="text-live">&times;</span> anything inside a home column</li>
+        </ul>
+      </section>
+
+      <div class="divider-x"></div>
+
+      <section class="section" id="safe">
+        <h2 class="section-title">Safe squares</h2>
+        <p class="mt-2 text-body text-ink">
+          Eight squares carry a star: the four coloured start squares and four more spaced
+          around the track. Tokens resting there cannot be sent home.
+        </p>
+        <div class="mt-4 flex items-center gap-3 rounded-tile border border-line bg-surface-alt p-4">
+          <span class="grid h-12 w-12 shrink-0 place-items-center rounded-tile bg-gold/25 text-h2" aria-hidden="true">&#9733;</span>
+          <p class="text-body-sm text-muted">Landing on a star is the safest way to park a token
+            while you free the rest of your set.</p>
+        </div>
+      </section>
+
+      <div class="divider-x"></div>
+
+      <section class="section" id="home">
+        <h2 class="section-title">Getting home</h2>
+        <p class="mt-2 text-body text-ink">
+          After a full lap your token turns into its own colour column and climbs six
+          squares to the home triangle. The final step needs an <strong>exact roll</strong>.
+        </p>
+        <p class="mt-2 text-body text-ink">
+          Need 3 and roll a 5? The token stays put. Overshooting is never allowed.
+        </p>
+        <div class="mt-4 rounded-tile bg-cta/10 p-4">
+          <p class="text-body font-bold text-cta-deep">Winning</p>
+          <p class="mt-1 text-body-sm text-ink">First player to bring all four tokens into the
+            home triangle wins. Remaining players can keep playing for second and third.</p>
+        </div>
+      </section>
+
+      <div class="divider-x"></div>
+
+      <section class="section" id="tips">
+        <h2 class="section-title">Five tips that actually help</h2>
+        <div class="mt-3 space-y-2">
+          <details class="rounded-tile border border-line bg-surface">
+            <summary class="cursor-pointer p-3.5 text-body font-bold text-ink">1. Spread your tokens</summary>
+            <p class="border-t border-line p-3.5 text-body-sm text-muted">Four tokens in a cluster give you one choice per roll. Spread out and almost every roll has a good option.</p>
+          </details>
+          <details class="rounded-tile border border-line bg-surface">
+            <summary class="cursor-pointer p-3.5 text-body font-bold text-ink">2. Count the danger zone</summary>
+            <p class="border-t border-line p-3.5 text-body-sm text-muted">A token within six squares ahead of an opponent can be captured next turn. Move it or accept the risk knowingly.</p>
+          </details>
+          <details class="rounded-tile border border-line bg-surface">
+            <summary class="cursor-pointer p-3.5 text-body font-bold text-ink">3. Don't rush every token home</summary>
+            <p class="border-t border-line p-3.5 text-body-sm text-muted">A token parked on the track threatens captures. One sitting in the home column threatens nothing.</p>
+          </details>
+          <details class="rounded-tile border border-line bg-surface">
+            <summary class="cursor-pointer p-3.5 text-body font-bold text-ink">4. Stack on stars</summary>
+            <p class="border-t border-line p-3.5 text-body-sm text-muted">Two tokens on one safe square are untouchable and give you flexible options later.</p>
+          </details>
+          <details class="rounded-tile border border-line bg-surface">
+            <summary class="cursor-pointer p-3.5 text-body font-bold text-ink">5. A capture beats progress</summary>
+            <p class="border-t border-line p-3.5 text-body-sm text-muted">Sending an opponent back undoes up to 50 squares of their work. Take it over a few squares of your own.</p>
+          </details>
+        </div>
+        <a class="btn btn-primary btn-block mt-6" href="index.html">Back to tournaments</a>
+      </section>

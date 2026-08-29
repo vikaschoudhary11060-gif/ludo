@@ -1,0 +1,82 @@
+      <section class="bg-brand px-4 py-6 text-white">
+        <p class="pill-label text-gold-light">Rankings</p>
+        <h1 class="mt-1 font-display text-h1 text-white">Leaderboard</h1>
+        <p class="mt-1 text-body-sm text-white/85">Ranked by games won.</p>
+      </section>
+
+      <!-- Range filter -->
+      <div class="border-b border-line bg-surface px-4 py-3">
+        <div class="flex gap-2 overflow-x-auto" role="tablist" aria-label="Leaderboard range">
+          <button class="chip is-active" type="button" role="tab" aria-selected="true"  data-range="today">Today</button>
+          <button class="chip"           type="button" role="tab" aria-selected="false" data-range="week">This week</button>
+          <button class="chip"           type="button" role="tab" aria-selected="false" data-range="all">All time</button>
+        </div>
+      </div>
+
+      <!-- Loading skeleton -->
+      <div id="lb-skeleton" class="section" aria-hidden="true">
+        <div class="mb-5 flex items-end justify-center gap-3">
+          <div class="skeleton h-24 w-20 rounded-tile"></div>
+          <div class="skeleton h-32 w-20 rounded-tile"></div>
+          <div class="skeleton h-20 w-20 rounded-tile"></div>
+        </div>
+        <div class="space-y-2">
+          <div class="skeleton h-14 w-full rounded-tile"></div>
+          <div class="skeleton h-14 w-full rounded-tile"></div>
+          <div class="skeleton h-14 w-full rounded-tile"></div>
+          <div class="skeleton h-14 w-full rounded-tile"></div>
+          <div class="skeleton h-14 w-full rounded-tile"></div>
+        </div>
+      </div>
+      <p class="sr-only" role="status" id="lb-status">Loading leaderboard</p>
+
+      <!-- Real content -->
+      <div id="lb-content" hidden>
+        <!-- Podium -->
+        <section class="section pb-2" aria-label="Top three">
+          <ol id="lb-podium" class="flex items-end justify-center gap-3"></ol>
+        </section>
+
+        <section class="px-4 pb-6">
+          <table class="w-full border-collapse overflow-hidden rounded-tile">
+            <caption class="sr-only">Player rankings by games won</caption>
+            <thead>
+              <tr class="bg-accent-head text-left">
+                <th scope="col" class="w-14 px-3 py-3 text-meta font-bold uppercase text-brand-dark">Rank</th>
+                <th scope="col" class="px-3 py-3 text-meta font-bold uppercase text-brand-dark">Player</th>
+                <th scope="col" class="px-3 py-3 text-right text-meta font-bold uppercase text-brand-dark">Wins</th>
+              </tr>
+            </thead>
+            <tbody id="lb-rows" data-stagger class="divide-y divide-line bg-surface"></tbody>
+          </table>
+
+          <div class="mt-4 flex items-center justify-between">
+            <button class="btn btn-outline !min-h-[40px] !px-4 !text-meta" type="button" id="lb-prev" disabled>Previous</button>
+            <span class="text-meta text-muted">Page <span id="lb-page">1</span> of <span id="lb-pages">1</span></span>
+            <button class="btn btn-outline !min-h-[40px] !px-4 !text-meta" type="button" id="lb-next">Next</button>
+          </div>
+        </section>
+
+        <!-- Your rank -->
+        <div class="sticky bottom-16 z-20 lg:bottom-0 border-t border-line bg-surface px-4 py-3">
+          <div class="flex items-center gap-3" data-when="in" hidden>
+            <span class="grid h-9 w-9 place-items-center rounded-full bg-brand font-display font-bold text-white"
+                  id="me-rank">&mdash;</span>
+            <span class="flex-1">
+              <span class="block text-body font-bold text-ink" data-bind="name">You</span>
+              <span class="block text-meta text-muted">Your position</span>
+            </span>
+            <span class="text-body font-bold text-cta" data-bind="won">0</span>
+          </div>
+          <div class="flex items-center gap-3" data-when="out">
+            <span class="flex-1 text-body-sm text-muted">Sign in to see where you rank.</span>
+            <a class="btn btn-primary !min-h-[40px] !px-4 !text-meta" href="login.html">Sign in</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="divider-x"></div>
+      <p class="bg-surface px-4 py-4 text-meta text-muted">
+        Sample data for the shell build. Rankings become live once accounts and match
+        results are stored on a server.
+      </p>

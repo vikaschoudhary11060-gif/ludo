@@ -1,0 +1,342 @@
+/* ============================================================
+   SQLite schema + helpers.
+
+   Money note: all amounts are INTEGER rupees. Stakes are always
+   whole rupees, and the only derived figure is the payout
+   (stake x 2 x (1 - commission)), which is rounded once, here,
+   so the server and the UI never disagree.
+   ============================================================ */
+import Database from 'better-sqlite3';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const file = process.env.DB_FILE || './data/khelbro.db';
+fs.mkdirSync(path.dirname(file), { recursive: true });
+
+export const db = new Database(file);
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS users (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  phone         TEXT    NOT NULL UNIQUE,
+  name          TEXT    NOT NULL,
+  avatar        INTEGER DEFAULT 0,
+  email         TEXT,
+  avatar_url    TEXT,
+  email_verified INTEGER NOT NULL DEFAULT 0,
+  kyc_status    TEXT    NOT NULL DEFAULT 'none',   -- none | pending | done | rejected
+  legal_name    TEXT,
+  kyc_method    TEXT,          -- manual | offline-ekyc
+  kyc_reference TEXT,          -- UIDAI referenceId
+  kyc_masked    TEXT,          -- XXXX XXXX 1234
+  kyc_dob       TEXT,
+  kyc_verified_at INTEGER,
+  referral_code TEXT    NOT NULL UNIQUE,
+  referred_by   INTEGER REFERENCES users(id),
+  banned        INTEGER NOT NULL DEFAULT 0,
+  session_epoch INTEGER NOT NULL DEFAULT 0,
+  created_at    INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS wallets (
+  user_id   INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  deposit   INTEGER NOT NULL DEFAULT 0,   -- spendable, not withdrawable
+  winnings  INTEGER NOT NULL DEFAULT 0,   -- spendable AND withdrawable
+  referral  INTEGER NOT NULL DEFAULT 0    -- must be redeemed into deposit first
+);
+
+CREATE TABLE IF NOT EXISTS otps (
+  phone      TEXT    PRIMARY KEY,
+  code       TEXT    NOT NULL,
+  expires_at INTEGER NOT NULL,
+  attempts   INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS transactions (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type       TEXT    NOT NULL,            -- credit | debit
+  bucket     TEXT    NOT NULL,            -- deposit | winnings | referral
+  amount     INTEGER NOT NULL,
+  note       TEXT,
+  status     TEXT    NOT NULL DEFAULT 'success',  -- success | pending | failed
+  ref_id     TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS battles (
+  id          TEXT    PRIMARY KEY,
+  mode        TEXT    NOT NULL,           -- lite | rich
+  amount      INTEGER NOT NULL,
+  status      TEXT    NOT NULL,           -- open | waiting | running | completed | cancelled | disputed
+  creator_id  INTEGER NOT NULL REFERENCES users(id),
+  acceptor_id INTEGER REFERENCES users(id),
+  room_code   TEXT,
+  winner_id   INTEGER REFERENCES users(id),
+  payout      INTEGER,
+  created_at  INTEGER NOT NULL,
+  settled_at  INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_battle_status ON battles(status, mode, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_battle_creator ON battles(creator_id);
+CREATE INDEX IF NOT EXISTS idx_battle_acceptor ON battles(acceptor_id);
+
+-- One claim per player. Agreement settles the battle; conflict marks it disputed.
+CREATE TABLE IF NOT EXISTS battle_claims (
+  battle_id  TEXT    NOT NULL REFERENCES battles(id) ON DELETE CASCADE,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  claim      TEXT    NOT NULL,            -- won | lost | cancel
+  reason     TEXT,
+  proof      TEXT,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (battle_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title      TEXT    NOT NULL,
+  body       TEXT,
+  read       INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_note_user ON notifications(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS referrals (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  referrer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  referee_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  earned      INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL,
+  UNIQUE (referrer_id, referee_id)
+);
+
+-- Individual admin logins. The shared header key is gone.
+-- Every successful login, for device history + multi-account detection.
+CREATE TABLE IF NOT EXISTS login_events (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ip         TEXT,
+  user_agent TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_login_user ON login_events(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_login_ip ON login_events(ip);
+
+CREATE TABLE IF NOT EXISTS watchlist (
+  user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  reason     TEXT,
+  added_by   TEXT,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS admin_users (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  username      TEXT    NOT NULL UNIQUE,
+  name          TEXT    NOT NULL,
+  password_hash TEXT    NOT NULL,
+  role          TEXT    NOT NULL DEFAULT 'admin',   -- owner | admin | viewer
+  active        INTEGER NOT NULL DEFAULT 1,
+  last_login_at INTEGER,
+  created_at    INTEGER NOT NULL
+);
+
+-- Who did what, when. Append-only.
+CREATE TABLE IF NOT EXISTS audit_log (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  admin_id    INTEGER REFERENCES admin_users(id),
+  admin_name  TEXT    NOT NULL,
+  action      TEXT    NOT NULL,
+  target_type TEXT,
+  target_id   TEXT,
+  detail      TEXT,
+  ip          TEXT,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audit_time ON audit_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_admin ON audit_log(admin_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint   TEXT    NOT NULL UNIQUE,
+  p256dh     TEXT    NOT NULL,
+  auth       TEXT    NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_push_user ON push_subscriptions(user_id);
+
+CREATE TABLE IF NOT EXISTS withdrawal_requests (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  amount         INTEGER NOT NULL,
+  method         TEXT    NOT NULL,               -- upi | bank
+  upi_id         TEXT,
+  account_name   TEXT,
+  account_number TEXT,
+  ifsc           TEXT,
+  status         TEXT    NOT NULL DEFAULT 'pending',  -- pending | paid | rejected
+  note           TEXT,
+  created_at     INTEGER NOT NULL,
+  settled_at     INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_wd_status ON withdrawal_requests(status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS kyc_documents (
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  slot       TEXT    NOT NULL,          -- front | back | selfie
+  path       TEXT    NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, slot)
+);
+
+-- Admin-controlled switches. One row, id = 1.
+CREATE TABLE IF NOT EXISTS settings (
+  id             INTEGER PRIMARY KEY CHECK (id = 1),
+  withdraw_open  INTEGER NOT NULL DEFAULT 1,
+  deposit_open   INTEGER NOT NULL DEFAULT 1,
+  maintenance    INTEGER NOT NULL DEFAULT 0,
+  notice         TEXT,
+  commission     REAL    NOT NULL DEFAULT 0.05,
+  battle_limit   INTEGER NOT NULL DEFAULT 2,   -- max open battles per user
+  referral_rate  REAL    NOT NULL DEFAULT 0.02,
+  upi_id         TEXT    DEFAULT 'khelbro@upi',
+  qr_image       TEXT
+);
+INSERT OR IGNORE INTO settings (id) VALUES (1);
+
+-- Up to N UPI/QR payment methods. Users are spread across the active ones so
+-- deposits don't all land on a single account.
+CREATE TABLE IF NOT EXISTS payment_methods (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  upi_id     TEXT    NOT NULL,
+  qr_image   TEXT,
+  label      TEXT,
+  active     INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL
+);
+
+-- Manual UPI deposits: the user pays, then submits the UTR for an admin to verify.
+CREATE TABLE IF NOT EXISTS deposit_requests (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  amount     INTEGER NOT NULL,
+  utr        TEXT    NOT NULL,
+  method_id  INTEGER REFERENCES payment_methods(id),
+  status     TEXT    NOT NULL DEFAULT 'pending',   -- pending | approved | rejected
+  note       TEXT,
+  created_at INTEGER NOT NULL,
+  settled_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_dep_status ON deposit_requests(status, created_at DESC);
+
+-- One conversation per player, with per-side unread counters.
+CREATE TABLE IF NOT EXISTS chat_threads (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id       INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  status        TEXT    NOT NULL DEFAULT 'open',   -- open | resolved | blocked
+  subject       TEXT,
+  unread_user   INTEGER NOT NULL DEFAULT 0,
+  unread_admin  INTEGER NOT NULL DEFAULT 0,
+  last_message  TEXT,
+  last_at       INTEGER,
+  created_at    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_thread_activity ON chat_threads(status, last_at DESC);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  thread_id  INTEGER NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
+  from_admin INTEGER NOT NULL DEFAULT 0,
+  admin_id   INTEGER REFERENCES admin_users(id),
+  author     TEXT    NOT NULL,
+  kind       TEXT    NOT NULL DEFAULT 'text',      -- text | image | voice
+  body       TEXT,
+  attachment TEXT,
+  duration   INTEGER,
+  read_at    INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_msg_thread ON chat_messages(thread_id, created_at);
+
+CREATE TABLE IF NOT EXISTS support_messages (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  from_admin INTEGER NOT NULL DEFAULT 0,
+  body       TEXT    NOT NULL,
+  created_at INTEGER NOT NULL
+);
+`);
+
+export const now = () => Date.now();
+
+/* ---------- wallet helpers (always call inside a transaction) ---------- */
+
+export function getWallet(userId) {
+  return db.prepare('SELECT deposit, winnings, referral FROM wallets WHERE user_id = ?').get(userId);
+}
+
+export function spendable(userId) {
+  const w = getWallet(userId);
+  return w ? w.deposit + w.winnings : 0;
+}
+
+const insertTx = db.prepare(`
+  INSERT INTO transactions (user_id, type, bucket, amount, note, status, ref_id, created_at)
+  VALUES (@user_id, @type, @bucket, @amount, @note, @status, @ref_id, @created_at)`);
+
+export function credit(userId, bucket, amount, note, refId = null, status = 'success') {
+  db.prepare(`UPDATE wallets SET ${bucket} = ${bucket} + ? WHERE user_id = ?`).run(amount, userId);
+  insertTx.run({ user_id: userId, type: 'credit', bucket, amount, note,
+                 status, ref_id: refId, created_at: now() });
+}
+
+/* Spends deposit balance first, then winnings. Returns false if short. */
+export function debit(userId, amount, note, refId = null) {
+  const w = getWallet(userId);
+  if (!w || w.deposit + w.winnings < amount) return false;
+  const fromDeposit = Math.min(w.deposit, amount);
+  const fromWinnings = amount - fromDeposit;
+  db.prepare('UPDATE wallets SET deposit = deposit - ?, winnings = winnings - ? WHERE user_id = ?')
+    .run(fromDeposit, fromWinnings, userId);
+  if (fromDeposit) insertTx.run({ user_id: userId, type: 'debit', bucket: 'deposit',
+      amount: fromDeposit, note, status: 'success', ref_id: refId, created_at: now() });
+  if (fromWinnings) insertTx.run({ user_id: userId, type: 'debit', bucket: 'winnings',
+      amount: fromWinnings, note, status: 'success', ref_id: refId, created_at: now() });
+  return true;
+}
+
+/* One call writes the in-app notification AND pushes it to the device.
+   Push is imported lazily to keep this module free of cycles. */
+export function notify(userId, title, body, data = {}) {
+  db.prepare('INSERT INTO notifications (user_id, title, body, created_at) VALUES (?,?,?,?)')
+    .run(userId, title, body, now());
+  import('./push.js')
+    .then(m => m.sendToUser(userId, { title, body, ...data }))
+    .catch(() => { /* push is best-effort, never block the transaction path */ });
+}
+
+/** Append-only record of an admin action. Never updated, never deleted. */
+export function audit(admin, action, { targetType = null, targetId = null, detail = null, ip = null } = {}) {
+  db.prepare(`INSERT INTO audit_log (admin_id, admin_name, action, target_type, target_id, detail, ip, created_at)
+              VALUES (?,?,?,?,?,?,?,?)`)
+    .run(admin?.id ?? null, admin?.username ?? 'unknown', action, targetType, targetId,
+         detail ? JSON.stringify(detail) : null, ip, now());
+}
+
+export function getSettings() {
+  return db.prepare('SELECT * FROM settings WHERE id = 1').get();
+}
+
+export function publicUser(u) {
+  if (!u) return null;
+  return {
+    id: u.id, phone: u.phone, name: u.name, avatar: u.avatar, avatarUrl: u.avatar_url,
+    email: u.email, emailVerified: !!u.email_verified,
+    kyc: u.kyc_status, kycMethod: u.kyc_method, kycMasked: u.kyc_masked,
+    kyc_: undefined, referralCode: u.referral_code, createdAt: u.created_at,
+  };
+}

@@ -1,0 +1,80 @@
+      <section class="relative min-h-[calc(100vh-56px)] overflow-hidden bg-brand">
+        <!-- Decorative dice field -->
+        <div class="splash-field" aria-hidden="true">
+          <div class="absolute inset-0 bg-gradient-to-b from-transparent to-brand"></div>
+        </div>
+
+        <div class="relative px-5 pb-10 pt-12">
+          <div class="flex justify-center">
+            <img src="assets/img/mark.svg" alt="" width="88" height="88" class="h-22 w-22 drop-shadow-xl">
+          </div>
+
+          <!-- STEP 1 — phone -->
+          <div id="step-phone">
+            <h1 class="mt-6 text-center font-display text-h1 text-white">Sign in</h1>
+            <p class="mt-1 text-center text-body-sm text-white/85">
+              We'll text you a one-time code.
+            </p>
+
+            <form class="mx-auto mt-7 w-full max-w-sm" id="phone-form" novalidate>
+              <label class="sr-only" for="phone">Mobile number</label>
+              <div class="flex overflow-hidden rounded-lg bg-white shadow-card">
+                <span class="grid w-16 place-items-center border-r border-line bg-surface-page text-body font-bold text-ink">+91</span>
+                <input class="h-14 flex-1 px-4 text-body text-ink outline-none placeholder:text-muted"
+                       id="phone" name="phone" type="tel" inputmode="numeric" maxlength="10"
+                       autocomplete="tel-national" placeholder="Mobile number"
+                       aria-describedby="phone-err" required>
+              </div>
+              <p class="mt-2 hidden text-meta font-medium text-gold-light" id="phone-err" role="alert">
+                Enter a valid 10-digit mobile number.
+              </p>
+              <button class="btn btn-primary btn-block mt-5 !h-14" type="submit" id="phone-submit">Continue</button>
+            </form>
+          </div>
+
+          <!-- STEP 2 — OTP -->
+          <div id="step-otp" hidden>
+            <h1 class="mt-6 text-center font-display text-h1 text-white">Enter the code</h1>
+            <p class="mt-1 text-center text-body-sm text-white/85">
+              Sent to <span class="font-bold text-gold-light" id="otp-target">+91</span>
+              <button class="ml-1 underline decoration-white/50 underline-offset-2" type="button" id="otp-change">Change</button>
+            </p>
+
+            <form class="mx-auto mt-7 w-full max-w-sm" id="otp-form" novalidate>
+              <fieldset class="border-0 p-0">
+                <legend class="sr-only">6-digit one-time password</legend>
+                <div class="flex justify-center gap-2" id="otp-boxes">
+                  <input class="otp-input" inputmode="numeric" maxlength="1" aria-label="Digit 1" autocomplete="one-time-code">
+                  <input class="otp-input" inputmode="numeric" maxlength="1" aria-label="Digit 2">
+                  <input class="otp-input" inputmode="numeric" maxlength="1" aria-label="Digit 3">
+                  <input class="otp-input" inputmode="numeric" maxlength="1" aria-label="Digit 4">
+                  <input class="otp-input" inputmode="numeric" maxlength="1" aria-label="Digit 5">
+                  <input class="otp-input" inputmode="numeric" maxlength="1" aria-label="Digit 6">
+                </div>
+              </fieldset>
+              <p class="mt-3 hidden text-center text-meta font-medium text-gold-light" id="otp-err" role="alert">
+                That code doesn't match. Try again.
+              </p>
+
+              <div class="mt-3 flex items-center justify-between text-meta text-white/85">
+                <span id="otp-hint" class="rounded bg-white/15 px-2 py-1">Demo code: <strong id="otp-demo">000000</strong></span>
+                <span id="otp-timer" aria-live="polite">Resend in 30s</span>
+              </div>
+
+              <button class="btn btn-primary btn-block mt-5 !h-14" type="submit" id="otp-submit">Verify &amp; sign in</button>
+              <button class="btn btn-ghost btn-block mt-2 !text-white/90 hover:!bg-white/10"
+                      type="button" id="otp-resend" disabled>Resend code</button>
+            </form>
+          </div>
+
+          <p class="mx-auto mt-10 max-w-sm text-center text-meta leading-relaxed text-white/80">
+            By continuing you agree to our
+            <a class="font-bold text-gold-light underline underline-offset-2" href="#">Terms of Use</a> and
+            <a class="font-bold text-gold-light underline underline-offset-2" href="#">Privacy Policy</a>,
+            and confirm you are 18 or older. Khelbro is a free-to-play skill gaming site.
+          </p>
+          <p class="mx-auto mt-4 max-w-sm text-center text-meta text-white/60">
+            Demo sign-in &mdash; no SMS is sent and nothing leaves your browser.
+          </p>
+        </div>
+      </section>

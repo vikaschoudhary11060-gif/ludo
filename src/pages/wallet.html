@@ -1,0 +1,93 @@
+      <div id="page-skeleton" class="section space-y-3" aria-hidden="true">
+        <div class="skeleton h-24 w-full rounded-card"></div>
+        <div class="skeleton h-16 w-full rounded-tile"></div>
+        <div class="skeleton h-16 w-full rounded-tile"></div>
+        <div class="skeleton h-16 w-full rounded-tile"></div>
+      </div>
+      <section class="section" data-when="out">
+        <div class="empty-state">
+          <img src="assets/img/mark.svg" alt="" width="96" height="96" class="h-24 w-24 opacity-90">
+          <h1 class="empty-state__title">Sign in to see your wallet</h1>
+          <p class="empty-state__text">Your balance, deposits and winnings live here.</p>
+          <a class="btn btn-primary mt-2" href="login.html">Sign in</a>
+        </div>
+      </section>
+
+      <div data-when="in" hidden>
+        <!-- First-visit notice, mirroring the reference's wallet alert -->
+        <div class="fixed inset-0 z-50 grid place-items-center bg-black/55 p-4" id="wallet-notice" data-modal hidden>
+          <div class="modal-card text-center" role="dialog" aria-modal="true" aria-labelledby="notice-title">
+            <p class="font-display text-title text-ink" id="notice-title">Players, please note</p>
+            <p class="mt-3 text-body-sm leading-relaxed text-ink">
+              Withdrawals are sent to the same account you deposited from. Complete KYC
+              before requesting your first withdrawal.
+            </p>
+            <button class="btn btn-primary mt-5 !px-10" type="button" data-modal-close>OK</button>
+          </div>
+        </div>
+
+        <section class="bg-brand px-4 pb-12 pt-6 text-center text-white">
+          <p class="pill-label text-white/70">Total balance</p>
+          <p class="mt-1 font-display text-[40px] leading-none text-white" data-bind="balance">&#8377;0</p>
+        </section>
+
+        <section class="relative z-10 -mt-8 px-4">
+          <div class="grid grid-cols-3 gap-2">
+            <div class="group rounded-tile bg-surface p-3 text-center shadow-card transition hover:-translate-y-0.5"
+                 title="Play battles with this. Cannot be withdrawn.">
+              <p class="pill-label flex items-center justify-center gap-1">Deposit
+                <span class="grid h-3.5 w-3.5 place-items-center rounded-full bg-muted/20 text-[9px] text-muted">i</span></p>
+              <p class="mt-1 font-display text-h3 text-ink" data-bind="cash">&#8377;0</p>
+              <p class="mt-0.5 text-[9px] uppercase text-muted">Play only</p>
+            </div>
+            <div class="group rounded-tile bg-surface p-3 text-center shadow-card transition hover:-translate-y-0.5"
+                 title="Won from battles. Withdraw this to your bank or UPI.">
+              <p class="pill-label flex items-center justify-center gap-1 text-cta">Winnings
+                <span class="grid h-3.5 w-3.5 place-items-center rounded-full bg-cta/20 text-[9px] text-cta">&#8595;</span></p>
+              <p class="mt-1 font-display text-h3 text-cta" data-bind="winnings">&#8377;0</p>
+              <p class="mt-0.5 text-[9px] uppercase text-cta">Withdrawable</p>
+            </div>
+            <div class="rounded-tile bg-surface p-3 text-center shadow-card">
+              <p class="pill-label">Referral</p>
+              <p class="mt-1 font-display text-h3 text-gold-deep" data-bind="earning">&#8377;0</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="px-4 pt-4">
+          <div class="grid grid-cols-2 gap-3">
+            <a class="btn btn-primary" href="add-cash.html">Add Cash</a>
+            <a class="btn btn-outline" href="withdraw.html">Withdraw</a>
+          </div>
+          <div class="mt-3 rounded-tile border-l-4 border-gold bg-gold/10 p-3">
+            <p class="text-body-sm font-bold text-ink">How cashout works</p>
+            <p class="mt-1 text-meta leading-relaxed text-ink">
+              Deposit money is for playing battles &mdash; it <strong>cannot be withdrawn directly</strong>.
+              When you win a battle, the prize goes to your <strong class="text-cta">Winnings</strong>,
+              and only Winnings can be withdrawn to your bank or UPI.
+            </p>
+          </div>
+        </section>
+
+        <div class="divider-x mt-4"></div>
+
+        <section class="section">
+          <div class="space-y-2.5">
+            <a class="tile-row" href="transactions.html">
+              <span class="tile-row__icon">&#128220;</span>
+              <span class="tile-row__label">Order history</span>
+              <span aria-hidden="true" class="text-muted">&rsaquo;</span>
+            </a>
+            <a class="tile-row" href="game-history.html">
+              <span class="tile-row__icon">&#9856;</span>
+              <span class="tile-row__label">Game history</span>
+              <span aria-hidden="true" class="text-muted">&rsaquo;</span>
+            </a>
+            <a class="tile-row" href="refer.html">
+              <span class="tile-row__icon">&#127873;</span>
+              <span class="tile-row__label">Refer &amp; earn</span>
+              <span aria-hidden="true" class="text-muted">&rsaquo;</span>
+            </a>
+          </div>
+        </section>
+      </div>

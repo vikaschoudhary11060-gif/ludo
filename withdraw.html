@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en" class="scroll-pt-16">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Withdraw | Khelbro</title>
+<meta name="description" content="Withdraw your Khelbro winnings to UPI or a bank account.">
+<meta name="keywords" content="ludo, play ludo online, ludo cash game, ludo tournament, khelbro, online ludo, ludo battle">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="author" content="Khelbro">
+<meta name="theme-color" content="#2d68c4">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/img/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Khelbro">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="canonical" href="https://khelbro.example/withdraw.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Khelbro">
+<meta property="og:title" content="Withdraw | Khelbro">
+<meta property="og:description" content="Withdraw your Khelbro winnings to UPI or a bank account.">
+<meta property="og:image" content="https://khelbro.example/assets/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Khelbro — Play Ludo & Win">
+<meta property="og:url" content="https://khelbro.example/withdraw.html">
+<meta property="og:locale" content="en_IN">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@khelbro">
+<meta name="twitter:title" content="Withdraw | Khelbro">
+<meta name="twitter:description" content="Withdraw your Khelbro winnings to UPI or a bank account.">
+<meta name="twitter:image" content="https://khelbro.example/assets/img/og.png">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Organization", "name": "Khelbro", "url": "https://khelbro.example", "logo": "https://khelbro.example/assets/img/icon-512.png", "sameAs": []}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebSite", "name": "Khelbro", "url": "https://khelbro.example", "potentialAction": {"@type": "SearchAction", "target": "https://khelbro.example/leaderboard.html?q={search_term_string}", "query-input": "required name=search_term_string"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://khelbro.example/index.html"}, {"@type": "ListItem", "position": 2, "name": "Withdraw", "item": "https://khelbro.example/withdraw.html"}]}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Saira+Semi+Condensed:wght@600;700&display=swap">
+<link rel="stylesheet" href="assets/css/app.css">
+<script>window.KHELBRO_API = "http://localhost:4000";
+// Runs before paint so the theme never flashes.
+(function(){try{var t=localStorage.getItem('khelbro.theme')||
+(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+document.documentElement.setAttribute('data-theme',t);
+if(!matchMedia('(prefers-reduced-motion: reduce)').matches)document.documentElement.classList.add('anim');
+if(t==='dark'){var m=document.querySelector('meta[name=theme-color]');if(m)m.content='#131720';}
+var l=localStorage.getItem('khelbro.lang');if(l)document.documentElement.lang=l;}catch(e){}})();</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<div class="app-shell">
+  <div class="app-column">
+    <div id="scrim" class="scrim lg:max-w-app" aria-hidden="true"></div>
+
+    <!-- Slide-in navigation -->
+    <nav id="drawer" class="drawer" aria-label="Main navigation" aria-hidden="true" tabindex="-1">
+      <div class="flex items-center gap-3 bg-brand-dark px-5 py-4">
+        <img src="assets/img/mark.svg" alt="" width="40" height="40" class="h-10 w-10">
+        <div class="flex-1">
+          <span class="font-display text-[22px] font-bold italic leading-none tracking-tight"><span class="bg-gradient-to-b from-white to-silver bg-clip-text text-transparent">khel</span><span class="bg-gradient-to-b from-gold-light to-gold-deep bg-clip-text text-transparent">bro</span></span>
+          <p class="text-label text-white/70" data-when="out">Not signed in</p>
+          <p class="text-label text-white/80" data-when="in" hidden data-bind="name">Player</p>
+        </div>
+        <button class="icon-btn" type="button" data-drawer-close aria-label="Close menu">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+               stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <!-- Theme and language sit first: they are settings, not destinations. -->
+      <div class="border-b border-white/15 px-4 py-3">
+        <div class="flex items-center gap-2">
+          <button class="flex flex-1 items-center justify-center gap-2 rounded-tile border border-white/25
+                         bg-white/10 px-3 py-2.5 text-body text-white transition hover:bg-white/20 active:scale-95"
+                  type="button" data-theme-toggle aria-pressed="false">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" aria-hidden="true">
+              <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+            <span data-theme-label>Light</span>
+          </button>
+
+          <div class="flex flex-1 overflow-hidden rounded-tile border border-white/25" role="group" aria-label="Language">
+            <button class="flex-1 px-2 py-2.5 text-body font-bold text-white transition hover:bg-white/20 active:scale-95"
+                    type="button" data-lang-set="en">EN</button>
+            <button class="flex-1 border-l border-white/25 px-2 py-2.5 text-body font-bold text-white transition hover:bg-white/20 active:scale-95"
+                    type="button" data-lang-set="hi">हिंदी</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex flex-col">
+        <a class="drawer-item" href="profile.html" data-drawer-close><span class="drawer-item__icon"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/></svg></span><span class="flex-1 text-body">My Profile</span><span aria-hidden="true" class="text-white/50">&rsaquo;</span></a>
+        <a class="drawer-item" href="leaderboard.html" data-drawer-close><span class="drawer-item__icon"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M7.5 4h9v5.5a4.5 4.5 0 0 1-9 0z"/><path d="M16.5 5.5H20V7a3 3 0 0 1-3 3M7.5 5.5H4V7a3 3 0 0 0 3 3"/><path d="M12 14v3M8.5 20h7"/></svg></span><span class="flex-1 text-body">Dashboard</span><span aria-hidden="true" class="text-white/50">&rsaquo;</span></a>
+        <a class="drawer-item" href="index.html#play" data-drawer-close><span class="drawer-item__icon"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2.5" y="7.5" width="19" height="10" rx="4"/><path d="M7 11v3M5.5 12.5h3M15.5 12h.01M18 13.5h.01"/></svg></span><span class="flex-1 text-body">Win Cash</span><span aria-hidden="true" class="text-white/50">&rsaquo;</span></a>
+        <a class="drawer-item" href="wallet.html" data-drawer-close><span class="drawer-item__icon"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2M3 8v9a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-3M3 8h16a2 2 0 0 1 2 2v1h-4a1.5 1.5 0 0 0 0 3h4"/></svg></span><span class="flex-1 text-body">My Wallet</span><span aria-hidden="true" class="text-white/50">&rsaquo;</span></a>
+        <a class="drawer-item" href="game-history.html" data-drawer-close><span class="drawer-item__icon"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3.5 4.5V9H8"/><path d="M12 7.5V12l3 1.8"/></svg></span><span class="flex-1 text-body">Game History</span><span aria-hidden="true" class="text-white/50">&rsaquo;</span></a>
+        <a class="drawer-item" href="transactions.html" data-drawer-close><span class="drawer-item__icon"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 3.5h12v17l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5z"/><path d="M9 8h6M9 12h6"/></svg></span><span class="flex-1 text-body">Transaction History</span><span aria-hidden="true" class="text-white/50">&rsaquo;</span></a>
+        <a class="drawer-item" href="refer.html" data-drawer-close><span class="drawer-item__icon"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3.5 9.5h17v3.5h-17zM5 13v7.5h14V13"/><path d="M12 9.5v11"/><path d="M12 9.5C10.4 6.2 7 6 7 8s3.3 1.5 5 1.5 5 .5 5-1.5-3.4-1.8-5 1.5z"/></svg></span><span class="flex-1 text-body">Refer and Earn</span><span aria-hidden="true" class="text-white/50">&rsaquo;</span></a>
+        <a class="drawer-item" href="refer.html#history" data-drawer-close><span class="drawer-item__icon"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.6a3.2 3.2 0 0 1 0 6.2M17.5 19a5.6 5.6 0 0 0-2-4"/></svg></span><span class="flex-1 text-body">Refer History</span><span aria-hidden="true" class="text-white/50">&rsaquo;</span></a>
+        <a class="drawer-item" href="notifications.html" data-drawer-close><span class="drawer-item__icon"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6.5 9a5.5 5.5 0 0 1 11 0v4l1.6 2.6H4.9L6.5 13z"/><path d="M10 18.5a2 2 0 0 0 4 0"/></svg></span><span class="flex-1 text-body">Notification</span><span aria-hidden="true" class="text-white/50">&rsaquo;</span></a>
+        <a class="drawer-item" href="support.html" data-drawer-close><span class="drawer-item__icon"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5"/><path d="M9.7 9.4a2.4 2.4 0 1 1 2.9 2.7v1.2"/><path d="M12 16.4h.01"/></svg></span><span class="flex-1 text-body">Support</span><span aria-hidden="true" class="text-white/50">&rsaquo;</span></a>
+        <button class="drawer-item w-full" type="button" data-action="logout" data-when="in" hidden><span class="drawer-item__icon"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.5 4.5H18a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5h-3.5"/><path d="m9.5 8.5-4 3.5 4 3.5M5.5 12H15"/></svg></span><span class="flex-1 text-left text-body">Log out</span></button>
+      </div>
+      <a class="btn btn-gold btn-block mx-5 mb-5 mt-auto !w-auto" href="login.html" data-when="out">Sign in to play</a>
+    </nav>
+
+    <!-- Top bar -->
+    <header class="site-header">
+      <button class="icon-btn" type="button" id="drawer-open" aria-label="Open menu"
+              aria-controls="drawer" aria-expanded="false">
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+
+      <a href="index.html" class="flex shrink-0 items-center gap-2" aria-label="Khelbro home">
+        <img src="assets/img/mark.svg" alt="" width="36" height="36" class="h-9 w-9">
+        <span class="hidden xs:inline"><span class="font-display text-[22px] font-bold italic leading-none tracking-tight"><span class="bg-gradient-to-b from-white to-silver bg-clip-text text-transparent">khel</span><span class="bg-gradient-to-b from-gold-light to-gold-deep bg-clip-text text-transparent">bro</span></span></span>
+      </a>
+
+      <!-- Shown only when the browser offers an install prompt. -->
+      <div class="ml-auto flex items-center gap-1.5 rounded-md bg-white/15 px-2 py-1" data-install hidden>
+        <span class="hidden text-[9px] font-bold leading-tight text-white xs:block">Install<br>app</span>
+        <button class="rounded bg-cta px-2 py-1 text-[10px] font-bold text-white transition hover:bg-cta-hover active:scale-95"
+                type="button" data-install-go>Install</button>
+        <button class="grid h-5 w-5 place-items-center rounded text-white/70 hover:text-white"
+                type="button" data-install-close aria-label="Dismiss install prompt">&times;</button>
+      </div>
+
+      <div class="ml-auto flex items-center gap-2">
+        <a class="btn btn-login" href="login.html" data-when="out">LOGIN</a>
+        <a class="money-box" href="wallet.html" data-when="in" hidden aria-label="Cash balance">
+          <span class="text-base leading-none" aria-hidden="true">&#128181;</span>
+          <span class="flex flex-col gap-0.5">
+            <span class="money-box__label">Cash</span>
+            <span class="money-box__value" data-bind="cash">&#8377;0</span>
+          </span>
+          <span class="money-box__add" aria-hidden="true">+</span>
+        </a>
+        <a class="money-box !min-w-[84px] !pr-2" href="wallet.html#refer" data-when="in" hidden
+           aria-label="Referral earning">
+          <span class="text-base leading-none" aria-hidden="true">&#127873;</span>
+          <span class="flex flex-col gap-0.5">
+            <span class="money-box__label">Earning</span>
+            <span class="money-box__value" data-bind="earning">&#8377;0</span>
+          </span>
+        </a>
+      </div>
+    </header>
+
+    <main id="main" class="main-area lg:pb-8">
+      <section class="bg-brand px-4 py-5 text-white">
+        <h1 class="font-display text-h2 text-white">Withdraw</h1>
+        <p class="mt-1 text-body-sm text-white/85">Winnings can be withdrawn. Deposits cannot.</p>
+      </section>
+
+      <section class="section" data-when="out">
+        <div class="empty-state">
+          <p class="empty-state__title">Sign in first</p>
+          <a class="btn btn-primary mt-2" href="login.html">Sign in</a>
+        </div>
+      </section>
+
+      <div data-when="in" hidden>
+        <!-- Admin switch: withdrawals temporarily closed -->
+        <section class="section" id="withdraw-closed" hidden>
+          <div class="rounded-card border-l-4 border-live bg-live/10 p-4">
+            <p class="text-title text-ink">Withdraw closed</p>
+            <p class="mt-1 text-body-sm text-ink">
+              Withdraw is currently disabled for security reasons. Please come back later &mdash;
+              it will be available soon.
+            </p>
+          </div>
+        </section>
+
+        <!-- KYC gate: explains itself, unlike the reference's blank page -->
+        <section class="section" id="kyc-gate" hidden>
+          <div class="rounded-card border-l-4 border-gold bg-gold/10 p-4">
+            <p class="font-display text-title text-ink">KYC required</p>
+            <p class="mt-1 text-body-sm text-ink">
+              Verify your identity before your first withdrawal. It takes about two minutes.
+            </p>
+            <a class="btn btn-gold mt-4" href="kyc.html">Complete KYC</a>
+          </div>
+        </section>
+
+        <div id="withdraw-form-wrap" hidden>
+          <section class="section">
+            <div class="rounded-card border border-line p-4 text-center">
+              <p class="pill-label text-cta">Withdrawable (winnings only)</p>
+              <p class="mt-1 font-display text-h1 text-cta animate-coin" data-bind="winnings">&#8377;0</p>
+              <p class="mt-1 text-meta text-muted">Deposit balance can't be withdrawn &mdash; play and win to cash out.</p>
+            </div>
+            <div id="no-winnings" class="mt-3 hidden rounded-tile border-l-4 border-gold bg-gold/10 p-3">
+              <p class="text-body-sm text-ink">You have no winnings yet. Win a battle to build a withdrawable balance.</p>
+              <a class="btn btn-primary btn-block mt-3" href="battles.html?mode=lite">Play a battle</a>
+            </div>
+
+            <label class="pill-label mb-1.5 mt-5 block text-muted-dark" for="wd-amount">Amount</label>
+            <input class="field" id="wd-amount" type="text" inputmode="numeric" placeholder="Min 100"
+                   autocomplete="off" aria-describedby="wd-err">
+            <p class="mt-1 hidden text-meta font-medium text-live" id="wd-err" role="alert"></p>
+          </section>
+
+          <div class="divider-x"></div>
+
+          <section class="section">
+            <h2 class="section-title">Withdraw to</h2>
+            <div class="mt-3 flex gap-2" role="group" aria-label="Withdrawal method">
+              <button class="chip is-active" type="button" data-method="upi">UPI</button>
+              <button class="chip" type="button" data-method="bank">Bank transfer</button>
+            </div>
+
+            <div class="mt-4 space-y-4" id="upi-fields">
+              <div>
+                <label class="pill-label mb-1.5 block text-muted-dark" for="upi-id">UPI ID</label>
+                <input class="field" id="upi-id" placeholder="name@bank" autocomplete="off">
+              </div>
+            </div>
+
+            <div class="mt-4 space-y-4" id="bank-fields" hidden>
+              <div>
+                <label class="pill-label mb-1.5 block text-muted-dark" for="bank-name">Bank</label>
+                <select class="field" id="bank-name" autocomplete="off">
+                  <option value="">Select your bank</option>
+                </select>
+              </div>
+              <div>
+                <label class="pill-label mb-1.5 block text-muted-dark" for="acc-name">Account holder name</label>
+                <input class="field" id="acc-name" autocomplete="name">
+              </div>
+              <div>
+                <label class="pill-label mb-1.5 block text-muted-dark" for="acc-no">Account number</label>
+                <input class="field" id="acc-no" inputmode="numeric" autocomplete="off">
+              </div>
+              <div>
+                <label class="pill-label mb-1.5 block text-muted-dark" for="ifsc">IFSC code</label>
+                <input class="field uppercase" id="ifsc" maxlength="11" autocomplete="off">
+              </div>
+            </div>
+
+            <button class="btn btn-primary btn-block mt-5" type="button" id="wd-btn">Request withdrawal</button>
+            <p class="mt-3 text-meta text-muted">Demo only &mdash; no money moves and no bank details are transmitted.</p>
+          </section>
+        </div>
+      </div>
+
+    </main>
+
+    <div class="divider-x"></div>
+    <footer class="bg-surface-alt px-4 py-6">
+      <details class="group rounded-tile border border-line bg-surface">
+        <summary class="flex cursor-pointer list-none items-center gap-3 p-4">
+          <img src="assets/img/mark.svg" alt="" width="44" height="44"
+               class="h-11 w-11 rounded-tile bg-surface-page p-1">
+          <span class="flex-1 text-body-sm text-muted">Terms, Privacy &amp; Support</span>
+          <svg class="h-5 w-5 text-muted transition-transform duration-300 group-open:rotate-180"
+               viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </summary>
+        <div class="grid grid-cols-2 gap-x-4 gap-y-2.5 border-t border-line px-4 py-4">
+          <a class="link-muted" href="terms.html">Terms & Conditions</a>
+          <a class="link-muted" href="privacy.html">Privacy Policy</a>
+          <a class="link-muted" href="refund-policy.html">Refund Policy</a>
+          <a class="link-muted" href="responsible-gaming.html">Responsible Gaming</a>
+          <a class="link-muted" href="about.html">About Us</a>
+          <a class="link-muted" href="support.html">Contact Us</a>
+        </div>
+      </details>
+
+      <p class="mt-5 text-meta leading-relaxed text-muted">
+        Khelbro is a free-to-play skill gaming site. Play responsibly and only if you are
+        18 or older. No real-money wagering is offered on this site.
+      </p>
+      <p class="mt-3 text-meta text-muted">&copy; <span data-year>2026</span> Khelbro. All rights reserved.</p>
+    </footer>
+
+    <a class="fab-wa" href="support.html" aria-label="Contact support">
+      <svg class="h-7 w-7" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 2a10 10 0 0 0-8.7 15l-1.2 4.3 4.4-1.2A10 10 0 1 0 12 2zm0 2a8 8 0 1 1-4.2 14.8l-.4-.2-2.3.6.6-2.2-.3-.4A8 8 0 0 1 12 4zm-3.2 4c-.2 0-.5.1-.7.4-.3.3-.9.9-.9 2.1s.9 2.4 1 2.6c.1.2 1.7 2.7 4.2 3.7 2.1.8 2.5.7 3 .6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2l-.6-.3-1.5-.7c-.2-.1-.4-.1-.5.1l-.7.9c-.1.2-.3.2-.5.1a6.6 6.6 0 0 1-3.2-2.8c-.1-.2 0-.4.1-.5l.4-.5.3-.5v-.4l-.7-1.7c-.2-.4-.4-.4-.5-.4z"/>
+      </svg>
+    </a>
+  </div>
+
+  <!-- Decorative brand panel: desktop only, hidden from assistive tech -->
+  <aside class="brand-panel" aria-hidden="true">
+    <div class="flex flex-col items-center gap-6 px-10 text-center">
+      <img src="assets/img/mark.svg" alt="" width="220" height="220"
+           class="h-52 w-52 animate-float drop-shadow-2xl">
+      <div>
+        <span class="font-display text-[54px] font-bold italic leading-none tracking-tight">
+          <span class="bg-gradient-to-b from-white to-silver bg-clip-text text-transparent">khel</span><span
+                class="bg-gradient-to-b from-gold-light to-gold-deep bg-clip-text text-transparent">bro</span>
+        </span>
+        <p class="mt-3 font-display text-h3 uppercase tracking-[0.35em] text-white/85">Play Ludo. Climb the board.</p>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script src="http://localhost:4000/socket.io/socket.io.js" defer></script>
+<script src="assets/js/pwa.js" defer></script>
+<script src="assets/js/push.js" defer></script>
+<script src="assets/js/i18n.js" defer></script>
+<script src="assets/js/api.js" defer></script>
+<script src="assets/js/app.js" defer></script>
+<script src="assets/js/anim.js" defer></script>
+<script src="assets/js/banks.js" defer></script>
+<script src="assets/js/withdraw.js" defer></script>
+</body>
+</html>

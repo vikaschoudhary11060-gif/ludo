@@ -1,0 +1,135 @@
+      <section class="bg-brand px-4 py-6 text-white">
+        <p class="pill-label text-gold-light">We're here</p>
+        <h1 class="mt-1 font-display text-h1 text-white">Support</h1>
+        <p class="mt-1 text-body-sm text-white/85">Available 24&times;7 &middot; usually replies in minutes.</p>
+      </section>
+
+      <!-- Contact channels -->
+      <section class="section">
+        <h2 class="section-title">Talk to us</h2>
+        <div class="mt-4 space-y-3">
+          <button class="btn btn-block !justify-start gap-3 !bg-chat !text-white hover:!bg-[#064c44]"
+                  type="button" data-modal-open="chat-sheet" id="open-chat">
+            <span aria-hidden="true">&#128172;</span> Live chat support
+            <span class="ml-auto flex items-center gap-2">
+              <span class="hidden rounded-full bg-live px-2 py-0.5 text-label font-black" id="chat-unread"></span>
+              <span class="text-meta font-normal opacity-90">Fastest</span>
+            </span>
+          </button>
+          <a class="btn btn-block !justify-start gap-3 !bg-tg !text-white hover:!bg-[#0072ab]"
+             href="#" rel="noopener">
+            <span aria-hidden="true">&#9992;</span> Open Telegram
+          </a>
+          <a class="btn btn-block !justify-start gap-3 !bg-wa !text-white hover:!bg-[#1faa52]"
+             href="#" rel="noopener">
+            <span aria-hidden="true">&#128241;</span> Chat on WhatsApp
+          </a>
+        </div>
+        <p class="mt-3 text-meta text-muted">
+          Buttons are placeholders &mdash; drop in your real Telegram and WhatsApp links.
+        </p>
+      </section>
+
+      <div class="divider-x"></div>
+
+      <!-- FAQ -->
+      <section class="section">
+        <h2 class="section-title">Common questions</h2>
+        <div class="mt-3 space-y-2">
+          <details class="rounded-tile border border-line bg-surface">
+            <summary class="cursor-pointer p-3.5 text-body font-bold text-ink">Is Khelbro free?</summary>
+            <p class="border-t border-line p-3.5 text-body-sm text-muted">Yes. Every mode is free to play and there is no real-money wagering on this site.</p>
+          </details>
+          <details class="rounded-tile border border-line bg-surface">
+            <summary class="cursor-pointer p-3.5 text-body font-bold text-ink">Do I need an account?</summary>
+            <p class="border-t border-line p-3.5 text-body-sm text-muted">No. You can play immediately. Signing in only saves your stats and leaderboard position.</p>
+          </details>
+          <details class="rounded-tile border border-line bg-surface">
+            <summary class="cursor-pointer p-3.5 text-body font-bold text-ink">Can I play with a friend?</summary>
+            <p class="border-t border-line p-3.5 text-body-sm text-muted">Yes &mdash; pass-and-play shares one device between 2 or 4 players. Online multiplayer is planned.</p>
+          </details>
+          <details class="rounded-tile border border-line bg-surface">
+            <summary class="cursor-pointer p-3.5 text-body font-bold text-ink">How hard is the computer?</summary>
+            <p class="border-t border-line p-3.5 text-body-sm text-muted">Three levels. Easy moves almost randomly, medium prefers captures and safety, hard scores every legal move before choosing.</p>
+          </details>
+          <details class="rounded-tile border border-line bg-surface">
+            <summary class="cursor-pointer p-3.5 text-body font-bold text-ink">My game froze. What now?</summary>
+            <p class="border-t border-line p-3.5 text-body-sm text-muted">Refresh the page. Game state is saved locally, so you will be offered the option to resume.</p>
+          </details>
+        </div>
+      </section>
+
+      <div class="divider-x"></div>
+
+      <!-- Message form -->
+      <section class="section">
+        <h2 class="section-title">Send a message</h2>
+        <form class="mt-4 space-y-4" id="support-form" novalidate>
+          <div>
+            <label class="pill-label mb-1.5 block text-muted-dark" for="sup-topic">Topic</label>
+            <select class="field" id="sup-topic" name="topic" required>
+              <option value="">Choose a topic</option>
+              <option>Gameplay or rules</option>
+              <option>Account or sign-in</option>
+              <option>Bug report</option>
+              <option>Feedback</option>
+              <option>Something else</option>
+            </select>
+          </div>
+          <div>
+            <label class="pill-label mb-1.5 block text-muted-dark" for="sup-email">Email</label>
+            <input class="field" id="sup-email" name="email" type="email" required
+                   autocomplete="email" placeholder="you@example.com"
+                   aria-describedby="sup-email-err">
+            <p class="mt-1 hidden text-meta text-live" id="sup-email-err" role="alert">Enter a valid email address.</p>
+          </div>
+          <div>
+            <label class="pill-label mb-1.5 block text-muted-dark" for="sup-msg">Message</label>
+            <textarea class="field !h-auto py-3" id="sup-msg" name="message" rows="4" required
+                      placeholder="Tell us what happened" aria-describedby="sup-msg-err"></textarea>
+            <p class="mt-1 hidden text-meta text-live" id="sup-msg-err" role="alert">Please add a few words.</p>
+          </div>
+          <button class="btn btn-primary btn-block" type="submit" id="sup-submit">Send message</button>
+          <p class="text-meta text-muted">This form is a front-end demo. Connect it to your inbox or helpdesk to go live.</p>
+        </form>
+      </section>
+
+      <!-- Live chat sheet -->
+      <div class="fixed inset-0 z-50 grid place-items-end justify-items-center bg-black/50"
+           id="chat-sheet" data-modal hidden>
+        <div class="sheet flex h-[70vh] flex-col animate-sheet-in" role="dialog" aria-modal="true"
+             aria-labelledby="chat-title">
+          <div class="sheet-header !bg-ink !text-white rounded-t-sheet">
+            <div class="flex-1">
+              <h2 class="font-display text-body text-white" id="chat-title">Khelbro Support</h2>
+              <p class="flex items-center gap-1.5 text-label text-white/70" id="chat-presence">
+                <span class="h-1.5 w-1.5 rounded-full bg-white/40" id="presence-dot"></span>
+                <span id="presence-text">Typically replies in a few minutes</span>
+              </p>
+            </div>
+            <button class="icon-btn !h-9 !w-9" type="button" data-modal-close aria-label="Close chat">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                   stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+          </div>
+          <div class="flex-1 space-y-2 overflow-y-auto bg-surface-alt p-4" id="chat-body" aria-live="polite"></div>
+          <div class="hidden px-4 pb-1 text-meta italic text-muted" id="chat-typing">Support is typing…</div>
+          <div class="flex flex-wrap gap-2 border-t border-line bg-surface px-4 py-3" id="chat-options">
+            <button class="chip" type="button">Rules question</button>
+            <button class="chip" type="button">Report a bug</button>
+            <button class="chip" type="button">Account help</button>
+          </div>
+          <form class="flex items-center gap-2 border-t border-line bg-surface p-3" id="chat-form">
+            <label class="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-full border border-line text-h3 text-muted transition hover:border-brand hover:text-brand"
+                   title="Send a photo">
+              <input class="sr-only" type="file" accept="image/*" id="chat-file">
+              <span aria-hidden="true">&#128206;</span>
+            </label>
+            <label class="sr-only" for="chat-input">Message</label>
+            <input class="field !h-11 flex-1 !rounded-full" id="chat-input" placeholder="Type a message" autocomplete="off">
+            <button class="btn btn-primary !min-h-[44px] !w-11 !px-0" type="submit" aria-label="Send">
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 20l18-8L3 4v6l12 2-12 2z"/></svg>
+            </button>
+          </form>
+        </div>
+      </div>

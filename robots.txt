@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /admin.html
+Disallow: /offline.html
+
+Sitemap: https://khelbro.example/sitemap.xml

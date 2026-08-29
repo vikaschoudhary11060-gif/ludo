@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Offline | Khelbro</title>
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/css/app.css">
+<script>(function(){try{var t=localStorage.getItem('khelbro.theme')||'light';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+</head>
+<body class="bg-surface-page">
+  <main class="mx-auto flex min-h-screen max-w-app flex-col items-center justify-center px-6 text-center">
+    <img src="assets/img/mark.svg" alt="" width="96" height="96" class="h-24 w-24 opacity-80">
+    <h1 class="mt-5 font-display text-h2 text-ink">You're offline</h1>
+    <p class="mt-2 max-w-xs text-body text-muted">
+      Khelbro needs a connection to load battles and balances. Pages you've already
+      visited will still open.
+    </p>
+    <button class="btn btn-primary mt-6" type="button" onclick="location.reload()">Try again</button>
+    <a class="link-muted mt-4" href="index.html">Go to home</a>
+  </main>
+</body>
+</html>

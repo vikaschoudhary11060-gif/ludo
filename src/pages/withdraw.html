@@ -1,0 +1,95 @@
+      <section class="bg-brand px-4 py-5 text-white">
+        <h1 class="font-display text-h2 text-white">Withdraw</h1>
+        <p class="mt-1 text-body-sm text-white/85">Winnings can be withdrawn. Deposits cannot.</p>
+      </section>
+
+      <section class="section" data-when="out">
+        <div class="empty-state">
+          <p class="empty-state__title">Sign in first</p>
+          <a class="btn btn-primary mt-2" href="login.html">Sign in</a>
+        </div>
+      </section>
+
+      <div data-when="in" hidden>
+        <!-- Admin switch: withdrawals temporarily closed -->
+        <section class="section" id="withdraw-closed" hidden>
+          <div class="rounded-card border-l-4 border-live bg-live/10 p-4">
+            <p class="text-title text-ink">Withdraw closed</p>
+            <p class="mt-1 text-body-sm text-ink">
+              Withdraw is currently disabled for security reasons. Please come back later &mdash;
+              it will be available soon.
+            </p>
+          </div>
+        </section>
+
+        <!-- KYC gate: explains itself, unlike the reference's blank page -->
+        <section class="section" id="kyc-gate" hidden>
+          <div class="rounded-card border-l-4 border-gold bg-gold/10 p-4">
+            <p class="font-display text-title text-ink">KYC required</p>
+            <p class="mt-1 text-body-sm text-ink">
+              Verify your identity before your first withdrawal. It takes about two minutes.
+            </p>
+            <a class="btn btn-gold mt-4" href="kyc.html">Complete KYC</a>
+          </div>
+        </section>
+
+        <div id="withdraw-form-wrap" hidden>
+          <section class="section">
+            <div class="rounded-card border border-line p-4 text-center">
+              <p class="pill-label text-cta">Withdrawable (winnings only)</p>
+              <p class="mt-1 font-display text-h1 text-cta animate-coin" data-bind="winnings">&#8377;0</p>
+              <p class="mt-1 text-meta text-muted">Deposit balance can't be withdrawn &mdash; play and win to cash out.</p>
+            </div>
+            <div id="no-winnings" class="mt-3 hidden rounded-tile border-l-4 border-gold bg-gold/10 p-3">
+              <p class="text-body-sm text-ink">You have no winnings yet. Win a battle to build a withdrawable balance.</p>
+              <a class="btn btn-primary btn-block mt-3" href="battles.html?mode=lite">Play a battle</a>
+            </div>
+
+            <label class="pill-label mb-1.5 mt-5 block text-muted-dark" for="wd-amount">Amount</label>
+            <input class="field" id="wd-amount" type="text" inputmode="numeric" placeholder="Min 100"
+                   autocomplete="off" aria-describedby="wd-err">
+            <p class="mt-1 hidden text-meta font-medium text-live" id="wd-err" role="alert"></p>
+          </section>
+
+          <div class="divider-x"></div>
+
+          <section class="section">
+            <h2 class="section-title">Withdraw to</h2>
+            <div class="mt-3 flex gap-2" role="group" aria-label="Withdrawal method">
+              <button class="chip is-active" type="button" data-method="upi">UPI</button>
+              <button class="chip" type="button" data-method="bank">Bank transfer</button>
+            </div>
+
+            <div class="mt-4 space-y-4" id="upi-fields">
+              <div>
+                <label class="pill-label mb-1.5 block text-muted-dark" for="upi-id">UPI ID</label>
+                <input class="field" id="upi-id" placeholder="name@bank" autocomplete="off">
+              </div>
+            </div>
+
+            <div class="mt-4 space-y-4" id="bank-fields" hidden>
+              <div>
+                <label class="pill-label mb-1.5 block text-muted-dark" for="bank-name">Bank</label>
+                <select class="field" id="bank-name" autocomplete="off">
+                  <option value="">Select your bank</option>
+                </select>
+              </div>
+              <div>
+                <label class="pill-label mb-1.5 block text-muted-dark" for="acc-name">Account holder name</label>
+                <input class="field" id="acc-name" autocomplete="name">
+              </div>
+              <div>
+                <label class="pill-label mb-1.5 block text-muted-dark" for="acc-no">Account number</label>
+                <input class="field" id="acc-no" inputmode="numeric" autocomplete="off">
+              </div>
+              <div>
+                <label class="pill-label mb-1.5 block text-muted-dark" for="ifsc">IFSC code</label>
+                <input class="field uppercase" id="ifsc" maxlength="11" autocomplete="off">
+              </div>
+            </div>
+
+            <button class="btn btn-primary btn-block mt-5" type="button" id="wd-btn">Request withdrawal</button>
+            <p class="mt-3 text-meta text-muted">Demo only &mdash; no money moves and no bank details are transmitted.</p>
+          </section>
+        </div>
+      </div>

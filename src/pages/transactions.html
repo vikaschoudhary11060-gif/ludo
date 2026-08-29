@@ -1,0 +1,26 @@
+      <section class="border-b border-line bg-surface px-4 py-3">
+        <h1 class="sr-only">Transaction history</h1>
+        <div class="flex gap-2 overflow-x-auto" role="group" aria-label="Filter transactions">
+          <button class="chip is-active" type="button" data-filter="all">&#128203; All</button>
+          <button class="chip" type="button" data-filter="credit">&#9989; Credit</button>
+          <button class="chip" type="button" data-filter="debit">&#10060; Debit</button>
+          <button class="chip" type="button" data-filter="bonus">&#127873; Bonus</button>
+        </div>
+      </section>
+
+      <div id="tx-skeleton" class="section space-y-2" aria-hidden="true">
+        <div class="skeleton h-16 w-full rounded-tile"></div>
+        <div class="skeleton h-16 w-full rounded-tile"></div>
+        <div class="skeleton h-16 w-full rounded-tile"></div>
+      </div>
+
+      <div id="tx-content" hidden>
+        <section class="section">
+          <ul class="space-y-2" id="tx-list" data-stagger></ul>
+          <div class="empty-state" id="tx-empty" hidden>
+            <span class="grid h-20 w-20 place-items-center rounded-full bg-surface-page text-[40px]" aria-hidden="true">&#129534;</span>
+            <p class="empty-state__title">No transactions</p>
+            <p class="empty-state__text">Deposits, winnings and withdrawals appear here.</p>
+          </div>
+        </section>
+      </div>

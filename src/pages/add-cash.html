@@ -1,0 +1,87 @@
+      <section class="bg-brand px-4 py-5 text-white">
+        <h1 class="font-display text-h2 text-white">Add Cash</h1>
+        <p class="mt-1 text-body-sm text-white/85">Choose an amount to top up your balance.</p>
+      </section>
+
+      <section class="section" data-when="out">
+        <div class="empty-state">
+          <p class="empty-state__title">Sign in first</p>
+          <p class="empty-state__text">You need an account before adding cash.</p>
+          <a class="btn btn-primary mt-2" href="login.html">Sign in</a>
+        </div>
+      </section>
+
+      <div data-when="in" hidden>
+        <section class="section">
+          <p class="pill-label text-muted-dark">Choose amount</p>
+          <div class="mt-3 grid grid-cols-3 gap-2" id="amount-chips"></div>
+
+          <label class="pill-label mb-1.5 mt-5 block text-muted-dark" for="deposit">Or enter an amount</label>
+          <input class="field" id="deposit" type="text" inputmode="numeric" placeholder="Min 100, Max 10,000"
+                 autocomplete="off" aria-describedby="deposit-err">
+          <p class="mt-1 hidden text-meta font-medium text-live" id="deposit-err" role="alert"></p>
+        </section>
+
+        <div class="divider-x"></div>
+
+        <section class="section">
+          <h2 class="section-title">Payment method</h2>
+          <div class="mt-3 flex gap-2" role="group" aria-label="Payment route">
+            <button class="chip is-active" type="button" data-route="instant">Instant</button>
+            <button class="chip" type="button" data-route="manual">Pay via UPI</button>
+          </div>
+          <fieldset class="mt-3 space-y-2 border-0 p-0">
+            <legend class="sr-only">Choose a payment method</legend>
+            <label class="tile-row cursor-pointer">
+              <input class="h-5 w-5 accent-brand" type="radio" name="pay" value="upi" checked>
+              <span class="tile-row__label">UPI</span><span class="text-meta text-muted">Instant</span>
+            </label>
+            <label class="tile-row cursor-pointer">
+              <input class="h-5 w-5 accent-brand" type="radio" name="pay" value="card">
+              <span class="tile-row__label">Card</span><span class="text-meta text-muted">Visa / Mastercard</span>
+            </label>
+            <label class="tile-row cursor-pointer">
+              <input class="h-5 w-5 accent-brand" type="radio" name="pay" value="netbanking">
+              <span class="tile-row__label">Net banking</span><span class="text-meta text-muted">All major banks</span>
+            </label>
+          </fieldset>
+
+          <button class="btn btn-primary btn-block mt-5" type="button" id="pay-btn">Add cash</button>
+          <p class="mt-3 text-meta text-muted" id="instant-note">
+            No payment gateway is connected yet. This simulates a successful top-up so the
+            rest of the app can be tested end to end.
+          </p>
+        </section>
+
+        <!-- Manual route: pay to our UPI ID, then submit the reference number -->
+        <section class="section" id="manual-route" hidden>
+          <div class="divider-x -mx-4 mb-4"></div>
+          <h2 class="section-title">Pay to this UPI ID</h2>
+          <p class="text-meta text-muted" id="upi-label"></p>
+          <div id="qr-wrap" class="mt-3 hidden text-center">
+            <img id="qr-img" src="" alt="Scan to pay" class="mx-auto h-48 w-48 rounded-tile border border-line bg-white p-2 object-contain">
+            <p class="mt-1 text-meta text-muted">Scan with any UPI app</p>
+          </div>
+          <div class="mt-3 flex items-center gap-2 rounded-tile border-2 border-dashed border-brand bg-brand/5 p-3">
+            <code class="flex-1 text-body font-bold text-ink" id="upi-id-value">khelbro@upi</code>
+            <button class="btn btn-outline !min-h-[38px] !px-4 !text-meta" type="button" id="copy-upi">Copy</button>
+          </div>
+          <ol class="mt-4 space-y-2 text-body-sm text-ink">
+            <li class="flex gap-2"><span class="font-bold text-brand">1.</span> Pay the exact amount to the UPI ID above.</li>
+            <li class="flex gap-2"><span class="font-bold text-brand">2.</span> Copy the UTR / reference number from your payment app.</li>
+            <li class="flex gap-2"><span class="font-bold text-brand">3.</span> Submit it below. We verify and credit your wallet.</li>
+          </ol>
+
+          <label class="pill-label mb-1.5 mt-5 block text-muted-dark" for="utr">UTR number</label>
+          <input class="field" id="utr" inputmode="text" maxlength="20" autocomplete="off"
+                 placeholder="e.g. AXIS123456789" aria-describedby="utr-help utr-err">
+          <p class="mt-1 text-meta text-muted" id="utr-help">Length: 10&ndash;20 characters</p>
+          <p class="mt-1 hidden text-meta font-medium text-live" id="utr-err" role="alert"></p>
+
+          <button class="btn btn-primary btn-block mt-4" type="button" id="utr-btn">Submit deposit request</button>
+
+          <h3 class="section-title mt-6">Your requests</h3>
+          <ul class="mt-3 space-y-2" id="req-list"></ul>
+          <p class="mt-2 hidden text-meta text-muted" id="req-empty">No deposit requests yet.</p>
+        </section>
+      </div>

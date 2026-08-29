@@ -1,0 +1,382 @@
+@tailwind base;
+
+/* ============================================================
+   Theme tokens.  Light is the default; [data-theme="dark"] on
+   <html> swaps them. Values are space-separated RGB channels so
+   Tailwind can apply its own opacity modifiers.
+   ============================================================ */
+:root {
+  --c-ink:            44 44 44;
+  --c-ink-body:       46 56 62;
+  --c-ink-strong:     13 13 13;
+  --c-muted:         118 118 118;
+  --c-muted-dark:     92 92 92;
+  --c-line:          224 224 224;
+  --c-line-soft:     237 237 237;
+  --c-line-block:    241 241 241;
+  --c-surface:       255 255 255;
+  --c-surface-alt:   250 250 250;
+  --c-surface-page:  249 249 249;
+  --c-surface-chip:  248 248 248;
+  --c-surface-input: 255 255 255;
+  --c-accent-head:   188 215 255;   /* table headers */
+  --c-accent-hair:   245 227 255;   /* bet-card hairline */
+  --c-accent-room:   232 238 238;   /* room-code panel */
+  --c-accent-fee:    223 168 255;   /* entry-fee label */
+  --c-shadow:          0 0 0;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --c-ink:           236 238 241;
+  --c-ink-body:      214 219 226;
+  --c-ink-strong:    255 255 255;
+  --c-muted:         154 162 173;
+  --c-muted-dark:    178 186 197;
+  --c-line:           47 54 64;
+  --c-line-soft:      40 46 55;
+  --c-line-block:     26 31 38;
+  --c-surface:        30 35 43;
+  --c-surface-alt:    25 29 36;
+  --c-surface-page:   19 23 29;
+  --c-surface-chip:   38 44 54;
+  --c-surface-input:  38 44 54;
+  --c-accent-head:    30 58 102;
+  --c-accent-hair:    72 52 92;
+  --c-accent-room:    33 44 48;
+  --c-accent-fee:     198 150 235;
+  --c-shadow:          0 0 0;
+  color-scheme: dark;
+}
+
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   KHELBRO — base
+   Reference structure: a fixed phone column + decorative brand
+   panel. Root font-size stays at the browser default so user
+   zoom/font preferences keep working (the reference forced 15px).
+   ============================================================ */
+@layer base {
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  body {
+    @apply bg-surface-page text-ink-body font-sans text-body antialiased;
+    transition: background-color .2s ease, color .2s ease;
+    overflow-x: hidden;
+  }
+  h1, h2, h3, h4 { @apply font-display font-bold text-ink; }
+  :focus-visible { @apply outline-none ring-2 ring-brand ring-offset-2 ring-offset-surface rounded-sm; }
+  .brand-panel :focus-visible { @apply ring-offset-brand; }
+  ::selection { @apply bg-gold/40; }
+
+  /* Component classes set `display`, which would otherwise beat the
+     hidden attribute we use for logged-in/out state. */
+  [hidden] { display: none !important; }
+
+  /* Until the session is known, show neither state — otherwise a signed-in
+     user sees the signed-out screen flash on every page load. */
+  html:not([data-session]) [data-when] { visibility: hidden; }
+
+  /* Respect the iOS notch and home indicator. */
+  body { padding-bottom: env(safe-area-inset-bottom); }
+
+  /* Respect users who ask for less motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+
+/* ============================================================
+   First-load entrance choreography.
+
+   Driven entirely by CSS and gated behind html.anim (set before
+   first paint in the page head), so blocks are hidden on the very
+   first frame and animate in — no flash, and content can never be
+   left permanently hidden because the animation fills to visible.
+   ============================================================ */
+@keyframes kb-enter {
+  from { opacity: 0; transform: translateY(26px) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes kb-header {
+  from { opacity: 0; transform: translateY(-100%); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes kb-card {
+  from { opacity: 0; transform: translateY(30px) scale(.94); }
+  60%  { transform: translateY(-3px) scale(1.01); }
+  to   { opacity: 1; transform: none; }
+}
+
+html.anim .site-header { animation: kb-header .5s cubic-bezier(.16,.84,.44,1) both; }
+
+/* Each top-level content block cascades in. */
+html.anim main > section,
+html.anim main > div > section,
+html.anim main > div[data-when] > section {
+  animation: kb-enter .6s cubic-bezier(.16,.84,.44,1) both;
+}
+html.anim main > section:nth-of-type(1),
+html.anim main > div > section:nth-of-type(1) { animation-delay: .06s; }
+html.anim main > section:nth-of-type(2),
+html.anim main > div > section:nth-of-type(2) { animation-delay: .16s; }
+html.anim main > section:nth-of-type(3),
+html.anim main > div > section:nth-of-type(3) { animation-delay: .26s; }
+html.anim main > section:nth-of-type(4),
+html.anim main > div > section:nth-of-type(4) { animation-delay: .36s; }
+html.anim main > section:nth-of-type(n+5) { animation-delay: .44s; }
+
+/* The two tournament cards pop in with a little overshoot. */
+html.anim .games-window > .gameCard-container:nth-child(1) { animation: kb-card .6s cubic-bezier(.22,.9,.3,1.2) .30s both; }
+html.anim .games-window > .gameCard-container:nth-child(2) { animation: kb-card .6s cubic-bezier(.22,.9,.3,1.2) .42s both; }
+
+/* Safety: if anything goes wrong, reveal everything after 1.2s regardless. */
+html.anim main { animation: kb-safety 0s linear 1.2s forwards; }
+@keyframes kb-safety { to { } }
+
+@media (prefers-reduced-motion: reduce) {
+  html.anim .site-header,
+  html.anim main > section,
+  html.anim main > div > section,
+  html.anim .games-window > .gameCard-container { animation: none !important; }
+}
+
+  /* ---------- Shell ---------- */
+  .app-shell   { @apply flex min-h-screen w-full; }
+  .app-column  { @apply relative w-full max-w-app bg-surface-page min-h-screen; }
+  .brand-panel {
+    @apply hidden lg:flex fixed inset-y-0 right-0 items-center justify-center overflow-hidden;
+    left: 480px;
+    background-color: theme('colors.brand.DEFAULT');
+    background-image:
+      repeating-linear-gradient(115deg, rgba(255,255,255,.07) 0 60px, transparent 60px 130px),
+      radial-gradient(circle at 50% 40%, rgba(255,255,255,.16), transparent 62%);
+    border-left: 10px solid theme('colors.line.DEFAULT');
+  }
+  .main-area { @apply pt-header w-full overflow-hidden; }
+
+  /* ---------- Header ---------- */
+  .site-header {
+    @apply fixed top-0 z-40 flex h-header w-full max-w-app items-center gap-2 bg-brand px-2.5 shadow-header;
+  }
+  .icon-btn {
+    @apply grid h-11 w-11 shrink-0 place-items-center rounded-lg text-white/95
+           transition-colors duration-200 hover:bg-white/15 active:scale-95 active:bg-white/25;
+  }
+  .money-box {
+    @apply relative flex h-[30px] min-w-[90px] items-center gap-1 rounded-[3px] border border-line-soft
+           bg-surface-chip pl-1.5 transition-colors duration-200 hover:bg-white;
+  }
+  .money-box__label { @apply text-[9px] font-medium uppercase leading-none text-muted; }
+  .money-box__value { @apply text-meta font-black leading-none text-ink; }
+  .money-box__add {
+    @apply ml-auto grid w-[17px] shrink-0 place-items-center self-stretch rounded-r-[3px]
+           bg-line-soft text-ink transition-colors hover:bg-line;
+  }
+
+  /* ---------- Drawer ---------- */
+  .scrim {
+    @apply fixed inset-0 z-40 bg-black/50 opacity-0 pointer-events-none transition-opacity duration-300;
+  }
+  .scrim.is-open { @apply opacity-100 pointer-events-auto; }
+  .drawer {
+    @apply fixed inset-y-0 left-0 z-50 flex w-[78%] max-w-[300px] flex-col bg-brand
+           -translate-x-full transition-transform duration-300 ease-out overflow-y-auto;
+  }
+  .drawer.is-open { @apply translate-x-0; }
+  .drawer-item {
+    @apply flex items-center gap-3 px-5 py-4 text-white transition-colors duration-200
+           hover:bg-white/10 active:bg-white/20 border-b border-white/10;
+  }
+  .drawer-item__icon {
+    @apply grid h-9 w-9 shrink-0 place-items-center rounded-tile border border-white/70 bg-white/15 text-white;
+  }
+  .drawer-item[aria-current="page"] { @apply bg-white/15 font-bold; }
+
+  /* ---------- Structure ---------- */
+  .divider-x  { @apply h-[10px] w-full bg-line-block; }  /* the reference's signature 10px separator */
+
+  /* Table heads use an accent that inverts, so the label colour must follow it. */
+  .thead-label { @apply text-brand-dark; }
+  [data-theme="dark"] .thead-label,
+  [data-theme="dark"] .text-brand-dark { color: rgb(191 214 255); }
+  .section    { @apply bg-surface p-4; }
+  .section-pad{ @apply bg-surface px-[22.5px] py-4; }   /* .px-4.py-3 in the reference */
+  .section-title    { @apply text-body font-bold text-ink; }          /* gamesSectionTitle 15px/700 */
+  .section-title-thin { @apply text-body font-thin text-ink; }        /* home 'Our Tournaments' 15px/100 */
+  .page-title       { @apply text-h4 text-center text-ink-strong; }   /* page h4 22.5px/500 */
+  .section-headline { @apply text-[11.25px] leading-[18px] text-muted; }
+  .battle-input-header { @apply block text-center text-label font-bold uppercase text-muted; }
+
+  /* ---------- Tile row (wallet / profile / KYC / history) ---------- */
+  .tile-row {
+    @apply flex w-full min-h-[56px] items-center gap-3 rounded-tile border border-line bg-surface
+           px-4 py-3.5 text-left transition duration-200
+           hover:border-brand/40 hover:shadow-tile active:scale-[.985] active:bg-surface-page;
+  }
+  .tile-row__icon { @apply grid h-10 w-10 shrink-0 place-items-center rounded-tile bg-surface-page text-brand; }
+  .tile-row__label { @apply flex-1 text-body text-ink; }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg px-5 text-body font-bold
+           transition duration-200 active:scale-[.98] disabled:pointer-events-none disabled:opacity-50;
+  }
+  .btn-primary   { @apply bg-cta text-white hover:bg-cta-hover; }
+  /* The reference draws this at 30px; 40px keeps it a real tap target on a phone
+     while looking almost identical. */
+  .btn-play {
+    @apply inline-flex h-10 items-center justify-center rounded-[5px] bg-cta px-[22px]
+           text-[10.5px] font-bold uppercase text-white transition
+           hover:bg-cta-hover active:scale-95 disabled:opacity-60;
+  }
+  .btn-gold      { @apply bg-gold text-ink hover:bg-gold-deep shadow-gold; }
+  .btn-brand     { @apply bg-brand text-white hover:bg-brand-dark; }
+  .btn-outline   { @apply border border-line bg-surface text-ink hover:border-brand hover:text-brand; }
+  .btn-ghost     { @apply text-brand hover:bg-brand/10; }
+  .btn-login {
+    @apply h-[30px] min-h-0 rounded-[3px] border border-[#3e51b5] bg-white px-[21px] py-0.5
+           text-body font-bold text-[#3e51b5] transition-colors hover:bg-[#3e51b5] hover:text-white;
+  }
+  .btn-block     { @apply w-full; }
+
+  /* ---------- Game / tournament card ---------- */
+  .game-card { @apply relative block overflow-hidden rounded-[5px] bg-surface no-underline; }
+  .game-card__media { @apply relative block aspect-[4/3] w-full overflow-hidden bg-surface-page; }
+  .game-card__media img { @apply h-full w-full object-cover transition-transform duration-500 group-hover:scale-105; }
+  /* Reference uses a solid #008cba wash that fades in over 0.5s */
+  .game-card__overlay {
+    @apply absolute inset-0 grid place-items-center bg-brand-mid opacity-0
+           transition-opacity duration-500 group-hover:opacity-100 group-focus-visible:opacity-100;
+  }
+  .game-card__title {
+    @apply flex items-center justify-center gap-1.5 rounded-b-[5px] border border-t-0 border-line
+           px-5 pb-2.5 pt-4 text-body font-bold text-ink;
+  }
+  .games-window { @apply flex flex-wrap justify-between; }
+  .gameCard-container { width: 46.8%; }
+
+  /* ---------- Badges & chips ---------- */
+  .live-badge { @apply inline-flex items-center gap-1 text-[11.25px] font-normal uppercase leading-[18px] text-live; }
+  .live-badge::before { content: ''; @apply h-[7px] w-[7px] rounded-full bg-live animate-blink; }
+  .chip {
+    @apply inline-flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full border border-line
+           bg-surface px-4 text-meta font-medium text-muted-dark transition duration-200
+           hover:border-brand hover:text-brand active:scale-95;
+  }
+  .chip.is-active { @apply border-brand bg-brand text-white hover:text-white; }
+  .pill-label { @apply text-label font-bold uppercase text-muted; }
+
+  /* ---------- Forms ---------- */
+  /* 16px minimum on touch inputs, or iOS Safari zooms the page on focus. */
+  .field {
+    @apply h-11 w-full rounded border border-line bg-surface-input px-3 py-2
+           text-[16px] text-ink transition duration-200 placeholder:text-muted
+           focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none
+           sm:h-[38px] sm:text-body;
+  }
+  .field-lg { @apply h-12; }
+  .field-error { @apply border-live focus:border-live focus:ring-live/25; }
+  .otp-input {
+    @apply h-14 w-12 rounded-lg border-2 border-line bg-surface-input text-center text-h3 font-black text-ink
+           transition duration-200 focus:border-brand focus:ring-2 focus:ring-brand/25 focus:outline-none;
+  }
+
+  /* ---------- Skeletons ---------- */
+  .skeleton { @apply relative overflow-hidden rounded-md bg-line/70; }
+  [data-theme='dark'] .skeleton::after { background-image: linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent); }
+  .skeleton::after {
+    content: ''; @apply absolute inset-0 -translate-x-full animate-shimmer;
+    background-image: linear-gradient(90deg, transparent, rgba(255,255,255,.7), transparent);
+  }
+
+  /* ---------- Empty state ---------- */
+  .empty-state { @apply flex flex-col items-center justify-center gap-3 px-6 py-14 text-center; }
+  .empty-state__title { @apply font-display text-h3 text-ink; }
+  .empty-state__text  { @apply text-body-sm text-muted max-w-xs; }
+
+  /* ---------- Bottom sheet & modal ---------- */
+  .sheet {
+    @apply fixed inset-x-0 bottom-0 z-50 mx-auto w-full max-w-app rounded-t-sheet bg-surface shadow-sheet;
+    max-height: 88vh;
+  }
+  .sheet-header { @apply flex items-center justify-between border-b border-line px-5 py-4; }
+  .modal-card   { @apply w-[min(92%,420px)] rounded-card border border-line bg-surface p-6 shadow-card animate-pop; }
+
+  /* ---------- Toast ---------- */
+  .toast {
+    @apply pointer-events-auto flex items-start gap-2.5 rounded-lg px-4 py-3 text-body-sm font-medium
+           text-white shadow-card animate-toast-in;
+  }
+  .toast-success { @apply bg-cta-deep; }
+  .toast-error   { @apply bg-live; }
+  .toast-info    { @apply bg-ink; }
+
+  /* Slow drifting dice field behind the sign-in screen, like the reference's
+     22s splash pan. */
+  .splash-field {
+    @apply pointer-events-none absolute inset-x-0 top-0 h-80 overflow-hidden;
+  }
+  .splash-field::before {
+    content: '';
+    @apply absolute inset-[-20%];
+    background-image:
+      radial-gradient(circle at 18% 30%, rgba(255,255,255,.22) 0 46px, transparent 47px),
+      radial-gradient(circle at 74% 18%, rgba(255,255,255,.16) 0 34px, transparent 35px),
+      radial-gradient(circle at 52% 62%, rgba(255,255,255,.13) 0 58px, transparent 59px),
+      radial-gradient(circle at 30% 78%, rgba(255,255,255,.10) 0 40px, transparent 41px);
+    animation: splashPan 22s linear infinite;
+  }
+  @keyframes splashPan {
+    0%   { transform: translate3d(0,0,0) rotate(0deg); }
+    50%  { transform: translate3d(-6%,3%,0) rotate(3deg); }
+    100% { transform: translate3d(0,0,0) rotate(0deg); }
+  }
+
+  /* ---------- Interaction polish ---------- */
+  .kb-ripple {
+    position: absolute; border-radius: 9999px; transform: scale(0);
+    background: rgba(255,255,255,.45); pointer-events: none;
+    animation: ripple .6s ease-out forwards;
+  }
+  .btn-outline .kb-ripple, .chip .kb-ripple { background: rgba(45,104,196,.25); }
+
+  /* Press feedback everywhere a finger lands, applied globally. */
+  .btn, .btn-play, .tile-row, .game-card, .money-box, .chip, .icon-btn {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Game cards lift and their image zooms — already partly present, strengthened. */
+  .game-card { will-change: transform; }
+  .game-card:active { transform: scale(.98); }
+
+  /* A subtle gold glow to draw the eye to a primary CTA. */
+  .cta-glow { animation: glow 2.4s ease-in-out infinite; }
+
+  /* Live pulse ring, for "Finding Player" and online dots. */
+  .pulse-dot { position: relative; }
+  .pulse-dot::after {
+    content: ''; position: absolute; inset: 0; border-radius: 9999px;
+    background: currentColor; animation: pulse-ring 1.6s ease-out infinite;
+  }
+
+  /* ---------- Misc ---------- */
+  .fab-wa {
+    @apply fixed bottom-6 right-6 z-30 grid h-[58px] w-[58px] place-items-center rounded-full text-white shadow-fab
+           transition-transform duration-200 hover:scale-110 active:scale-95;
+    background-image: linear-gradient(145deg, #2fe676, #25d366 45%, #1faa52);
+  }
+  .link-muted { @apply text-body-sm text-muted transition-colors hover:text-brand hover:underline; }
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[100]
+           focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-brand focus:font-bold;
+  }
+}

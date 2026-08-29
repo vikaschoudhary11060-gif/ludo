@@ -1,0 +1,20 @@
+      <div id="page-skeleton" class="section space-y-3" aria-hidden="true">
+        <div class="skeleton h-24 w-full rounded-card"></div>
+        <div class="skeleton h-16 w-full rounded-tile"></div>
+        <div class="skeleton h-16 w-full rounded-tile"></div>
+        <div class="skeleton h-16 w-full rounded-tile"></div>
+      </div>
+      <section class="flex items-center justify-between border-b border-line bg-surface px-4 py-3">
+        <h1 class="font-display text-title text-ink">Notifications</h1>
+        <button class="link-muted" type="button" id="mark-read">Mark all read</button>
+      </section>
+
+      <section class="section">
+        <ul class="space-y-2" id="note-list" data-stagger></ul>
+        <div class="empty-state" id="note-empty" hidden>
+          <span class="grid h-20 w-20 place-items-center rounded-full bg-surface-page text-[40px]" aria-hidden="true">&#128276;</span>
+          <p class="empty-state__title">No notification yet!</p>
+          <p class="empty-state__text">Seems like you haven't done any activity yet.</p>
+          <a class="btn btn-primary mt-2" href="index.html#play">Play a battle</a>
+        </div>
+      </section>

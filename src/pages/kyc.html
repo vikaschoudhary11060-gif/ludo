@@ -1,0 +1,159 @@
+      <section class="bg-brand px-4 py-5 text-white">
+        <h1 class="font-display text-h2 text-white">Complete KYC</h1>
+        <p class="mt-1 text-body-sm text-white/85">Required once, before your first withdrawal.</p>
+      </section>
+
+      <section class="section" data-when="out">
+        <div class="empty-state">
+          <p class="empty-state__title">Sign in first</p>
+          <a class="btn btn-primary mt-2" href="login.html">Sign in</a>
+        </div>
+      </section>
+
+      <div data-when="in" hidden>
+        <!-- Already done -->
+        <section class="section" id="kyc-done" hidden>
+          <div class="empty-state">
+            <span class="grid h-20 w-20 place-items-center rounded-full bg-cta/15 text-[40px]" aria-hidden="true">&#9989;</span>
+            <p class="empty-state__title">KYC completed</p>
+            <p class="empty-state__text">Your identity is verified. Withdrawals are unlocked.</p>
+            <a class="btn btn-primary mt-2" href="withdraw.html">Withdraw winnings</a>
+          </div>
+        </section>
+
+        <!-- Pending -->
+        <section class="section" id="kyc-pending" hidden>
+          <div class="empty-state">
+            <span class="grid h-20 w-20 place-items-center rounded-full bg-gold/25 text-[40px]" aria-hidden="true">&#8987;</span>
+            <p class="empty-state__title">KYC under review</p>
+            <p class="empty-state__text">Documents submitted. Verification usually takes a few hours.</p>
+          </div>
+        </section>
+
+        <!-- Route picker: instant offline eKYC, or the manual upload fallback. -->
+        <section class="section" id="kyc-choose" hidden>
+          <h2 class="section-title">Choose how to verify</h2>
+
+          <button class="tile-row mt-3 !items-start" type="button" data-kyc-route="ekyc">
+            <span class="tile-row__icon">&#9889;</span>
+            <span class="flex-1">
+              <span class="block text-body font-bold text-ink">Offline Aadhaar eKYC
+                <span class="ml-1 rounded-full bg-cta/15 px-2 py-0.5 text-label font-bold uppercase text-cta">Instant</span>
+              </span>
+              <span class="block text-body-sm text-muted">
+                Download your own file from UIDAI and upload it. Verified automatically &mdash;
+                usually unlocks withdrawals straight away.</span>
+            </span>
+          </button>
+
+          <button class="tile-row mt-2.5 !items-start" type="button" data-kyc-route="manual">
+            <span class="tile-row__icon">&#128247;</span>
+            <span class="flex-1">
+              <span class="block text-body font-bold text-ink">Upload ID photos</span>
+              <span class="block text-body-sm text-muted">
+                Front, back and a selfie. Reviewed by our team, usually within a few hours.</span>
+            </span>
+          </button>
+        </section>
+
+        <!-- Offline eKYC -->
+        <section class="section" id="kyc-ekyc" hidden>
+          <button class="link-muted mb-3 inline-flex items-center gap-1" type="button" data-kyc-route="choose">
+            <span aria-hidden="true">&lsaquo;</span> Back
+          </button>
+          <h2 class="section-title">Offline Aadhaar eKYC</h2>
+          <ol class="mt-3 space-y-2.5 text-body-sm text-ink">
+            <li class="flex gap-2"><span class="font-bold text-brand">1.</span>
+              Open <a class="text-brand underline" href="https://myaadhaar.uidai.gov.in/offline-ekyc"
+                      target="_blank" rel="noopener noreferrer">myaadhaar.uidai.gov.in</a> and sign in.</li>
+            <li class="flex gap-2"><span class="font-bold text-brand">2.</span>
+              Choose <strong>Offline eKYC</strong> and set a <strong>4-character share code</strong>.</li>
+            <li class="flex gap-2"><span class="font-bold text-brand">3.</span>
+              Download the ZIP, then upload it here with that share code.</li>
+          </ol>
+
+          <div class="mt-4 space-y-4">
+            <div>
+              <label class="pill-label mb-1.5 block text-muted-dark" for="ekyc-file">eKYC ZIP file</label>
+              <input class="field !h-auto py-2.5 file:mr-3 file:rounded-md file:border-0 file:bg-brand file:px-3 file:py-1.5 file:text-meta file:font-bold file:text-white"
+                     id="ekyc-file" type="file" accept=".zip,application/zip">
+            </div>
+            <div>
+              <label class="pill-label mb-1.5 block text-muted-dark" for="ekyc-code">Share code</label>
+              <input class="field w-32 text-center uppercase tracking-[0.4em]" id="ekyc-code"
+                     maxlength="4" autocomplete="off" placeholder="ABCD">
+            </div>
+            <p class="hidden text-meta font-medium text-live" id="ekyc-err" role="alert"></p>
+            <button class="btn btn-primary btn-block" type="button" id="ekyc-submit">Verify with eKYC</button>
+          </div>
+
+          <div class="mt-4 rounded-tile border-l-4 border-brand bg-brand/5 p-3">
+            <p class="text-meta text-ink">
+              Your file is read on our server to check UIDAI's digital signature and is not
+              stored. We keep only your name, date of birth and the last 4 digits of your
+              Aadhaar. We never see your full Aadhaar number.
+            </p>
+          </div>
+
+          <div class="mt-4 hidden rounded-card border border-line p-4" id="ekyc-result"></div>
+        </section>
+
+        <form id="kyc-form" novalidate hidden>
+          <section class="section !pb-0">
+            <button class="link-muted inline-flex items-center gap-1" type="button" data-kyc-route="choose">
+              <span aria-hidden="true">&lsaquo;</span> Back
+            </button>
+          </section>
+          <section class="section">
+            <h2 class="section-title">Your details</h2>
+            <div class="mt-4 space-y-4">
+              <div>
+                <label class="pill-label mb-1.5 block text-muted-dark" for="kyc-name">Full name (as on ID)</label>
+                <input class="field" id="kyc-name" autocomplete="name" required aria-describedby="kyc-name-err">
+                <p class="mt-1 hidden text-meta text-live" id="kyc-name-err" role="alert">Enter your full name.</p>
+              </div>
+              <div>
+                <label class="pill-label mb-1.5 block text-muted-dark" for="kyc-dob">Date of birth</label>
+                <input class="field" id="kyc-dob" type="date" required aria-describedby="kyc-dob-err">
+                <p class="mt-1 hidden text-meta text-live" id="kyc-dob-err" role="alert">You must be 18 or older.</p>
+              </div>
+              <div>
+                <label class="pill-label mb-1.5 block text-muted-dark" for="kyc-id">ID number (12 digits)</label>
+                <input class="field tracking-widest" id="kyc-id" inputmode="numeric" maxlength="12"
+                       autocomplete="off" required aria-describedby="kyc-id-err">
+                <p class="mt-1 hidden text-meta text-live" id="kyc-id-err" role="alert">Enter a valid 12-digit number.</p>
+              </div>
+            </div>
+          </section>
+
+          <div class="divider-x"></div>
+
+          <section class="section">
+            <h2 class="section-title">Documents</h2>
+            <p class="section-headline mt-1">Clear photos, all corners visible.</p>
+            <div class="mt-4 space-y-3">
+              <div>
+                <label class="pill-label mb-1.5 block text-muted-dark" for="doc-front">ID front</label>
+                <input class="field !h-auto py-2.5 file:mr-3 file:rounded-md file:border-0 file:bg-brand file:px-3 file:py-1.5 file:text-meta file:font-bold file:text-white"
+                       id="doc-front" type="file" accept="image/*" required>
+              </div>
+              <div>
+                <label class="pill-label mb-1.5 block text-muted-dark" for="doc-back">ID back</label>
+                <input class="field !h-auto py-2.5 file:mr-3 file:rounded-md file:border-0 file:bg-brand file:px-3 file:py-1.5 file:text-meta file:font-bold file:text-white"
+                       id="doc-back" type="file" accept="image/*" required>
+              </div>
+              <div>
+                <label class="pill-label mb-1.5 block text-muted-dark" for="doc-selfie">Selfie holding your ID</label>
+                <input class="field !h-auto py-2.5 file:mr-3 file:rounded-md file:border-0 file:bg-brand file:px-3 file:py-1.5 file:text-meta file:font-bold file:text-white"
+                       id="doc-selfie" type="file" accept="image/*" required>
+              </div>
+            </div>
+            <p class="mt-2 hidden text-meta font-medium text-live" id="doc-err" role="alert">Attach all three documents.</p>
+
+            <button class="btn btn-primary btn-block mt-5" type="submit">Submit for review</button>
+            <p class="mt-3 text-meta text-muted">
+              Demo only. Files stay in your browser &mdash; nothing is uploaded or stored on a server.
+            </p>
+          </section>
+        </form>
+      </div>

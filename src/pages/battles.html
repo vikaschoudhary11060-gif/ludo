@@ -1,0 +1,107 @@
+      <!-- Title block: h4 22.5px/500 #0d0d0d, centred; subtitle 15px -->
+      <div class="text-center">
+        <h1 class="page-title mt-3" id="mode-title">Ludo Classic Lite Mode</h1>
+        <p class="text-body text-ink-body" id="mode-range">Bet amount: &#8377;50 to &#8377;25,000/-</p>
+      </div>
+
+      <!-- Create a Battle! -->
+      <span class="battle-input-header mt-2">Create a Battle!</span>
+      <form class="mx-auto my-2 flex w-1/2 min-w-[240px] max-w-[240px]" id="create-form" novalidate>
+        <label class="sr-only" for="amount">Battle amount in rupees</label>
+        <div class="flex-1">
+          <input class="field" id="amount" name="amount" type="text" inputmode="numeric"
+                 placeholder="Amount" autocomplete="off" aria-describedby="amount-err">
+        </div>
+        <div class="ml-1">
+          <button class="btn-play m-1" type="submit" id="create-btn">Set</button>
+        </div>
+      </form>
+      <p class="mx-auto mb-2 hidden max-w-[280px] text-center text-[11.25px] font-medium text-live"
+         id="amount-err" role="alert"></p>
+
+      <p class="mb-2 text-center text-[11.25px] text-muted" data-when="in" hidden>
+        Balance <span class="font-bold text-ink" data-bind="balance">&#8377;0</span>
+        &middot; <a class="text-brand underline" href="add-cash.html">Add cash</a>
+      </p>
+      <p class="mb-2 text-center text-[11.25px] text-muted" data-when="out">
+        <a class="font-bold text-brand underline" href="login.html">Sign in</a> to create or play a battle.
+      </p>
+
+      <div class="divider-x"></div>
+
+      <!-- Open Battles -->
+      <section class="section-pad">
+        <div class="mb-3 flex items-center">
+          <img src="assets/img/icon-open.svg" alt="" width="20" height="20" class="h-5 w-5">
+          <span class="section-title ml-2">Open Battles</span>
+          <button class="ml-auto flex items-center gap-1 text-[11.25px] font-bold uppercase text-muted transition hover:text-brand"
+                  type="button" data-modal-open="rules-modal">
+            Rules
+            <span class="grid h-[22px] w-[22px] place-items-center rounded-full border border-current text-[11px]" aria-hidden="true">i</span>
+          </button>
+        </div>
+
+        <div id="open-skeleton" class="space-y-2" aria-hidden="true">
+          <div class="skeleton h-[76px] w-full rounded-[5px]"></div>
+          <div class="skeleton h-[76px] w-full rounded-[5px]"></div>
+          <div class="skeleton h-[76px] w-full rounded-[5px]"></div>
+        </div>
+        <div id="open-wrap" hidden>
+          <ul class="space-y-2" id="open-list" data-stagger></ul>
+          <p class="py-6 text-center text-[11.25px] text-muted" id="open-empty" hidden>
+            No open battles right now. Create one above.
+          </p>
+        </div>
+      </section>
+
+      <div class="divider-x"></div>
+
+      <!-- Running Battles -->
+      <section class="section-pad">
+        <div class="mb-2 flex items-center">
+          <img src="assets/img/icon-running.svg" alt="" width="20" height="20" class="h-5 w-5">
+          <span class="section-title ml-2">Running Battles</span>
+        </div>
+        <ul class="space-y-2" id="running-list" data-stagger></ul>
+        <p class="py-6 text-center text-[11.25px] text-muted" id="running-empty" hidden>
+          No battles running right now.
+        </p>
+      </section>
+
+      <!-- Rules modal -->
+      <div class="fixed inset-0 z-50 grid place-items-center bg-black/55 p-4" id="rules-modal" data-modal hidden>
+        <div class="modal-card max-h-[80vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="rules-title">
+          <div class="mb-3 flex items-start justify-between gap-3">
+            <h2 class="text-body font-bold text-ink" id="rules-title">Battle rules</h2>
+            <button class="icon-btn !h-8 !w-8 !text-ink hover:!bg-line" type="button" data-modal-close aria-label="Close">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+          </div>
+          <ol class="list-decimal space-y-2 pl-5 text-[11.25px] leading-[18px] text-ink">
+            <li>Record every game while playing. Video proof is necessary for cancellation.</li>
+            <li>The creator sets an 8-digit room code. Both players must join that room.</li>
+            <li>Submit your result honestly. Wrong updates lead to a penalty.</li>
+            <li>If the opponent does not join within 5 minutes, cancel to get a refund.</li>
+            <li>Winnings are the amount doubled, minus a 5% commission.</li>
+            <li>Abusing or stalling can award the battle to your opponent.</li>
+          </ol>
+          <h3 class="mt-5 text-body font-bold text-ink">Commission rates</h3>
+          <table class="mt-2 w-full border-collapse text-[11.25px]">
+            <thead>
+              <tr class="bg-surface-page text-left">
+                <th class="border border-line px-2 py-1.5 font-bold text-ink">Battle amount</th>
+                <th class="border border-line px-2 py-1.5 font-bold text-ink">Commission</th>
+              </tr>
+            </thead>
+            <tbody id="commission-rows" class="text-ink">
+              <tr><td class="border border-line px-2 py-1.5">All amounts</td>
+                  <td class="border border-line px-2 py-1.5" id="commission-value">5%</td></tr>
+            </tbody>
+          </table>
+          <p class="mt-2 text-[11.25px] text-muted">
+            Winner receives the battle amount doubled, less commission.
+            A &#8377;500 battle pays <span id="commission-example">&#8377;950</span>.
+          </p>
+          <button class="btn btn-primary btn-block mt-5" type="button" data-modal-close>Got it</button>
+        </div>
+      </div>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://khelbro.example/index.html</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
+  <url><loc>https://khelbro.example/battles.html</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
+  <url><loc>https://khelbro.example/battle.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://khelbro.example/how-to-play.html</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://khelbro.example/leaderboard.html</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
+  <url><loc>https://khelbro.example/profile.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://khelbro.example/wallet.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://khelbro.example/add-cash.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://khelbro.example/withdraw.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://khelbro.example/game-history.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://khelbro.example/transactions.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://khelbro.example/refer.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://khelbro.example/notifications.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://khelbro.example/kyc.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://khelbro.example/login.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://khelbro.example/support.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://khelbro.example/waiting-room.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://khelbro.example/redeem.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://khelbro.example/terms.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://khelbro.example/privacy.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://khelbro.example/refund-policy.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://khelbro.example/responsible-gaming.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://khelbro.example/about.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+</urlset>

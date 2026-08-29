@@ -1,0 +1,140 @@
+      <section class="px-4 py-4">
+        <a class="link-muted inline-flex items-center gap-1" href="battles.html" id="back-link">
+          <span aria-hidden="true">&lsaquo;</span> Back to battles
+        </a>
+      </section>
+
+      <div id="battle-view" hidden>
+        <!-- Players -->
+        <section class="section !pt-0">
+          <div class="rounded-card border border-brand bg-surface p-4">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex flex-1 flex-col items-center gap-1.5">
+                <span class="grid h-12 w-12 place-items-center rounded-full bg-ludo-red text-h3 text-white" aria-hidden="true">&#9823;</span>
+                <span class="max-w-full truncate text-body-sm font-bold text-ink" id="p1-name">&mdash;</span>
+                <span class="pill-label">Creator</span>
+              </div>
+              <div class="flex flex-col items-center">
+                <span class="font-display text-h2 text-muted">VS</span>
+                <span class="mt-1 rounded-full bg-cta/15 px-3 py-1 text-body font-black text-cta" id="b-amount">&#8377;0</span>
+              </div>
+              <div class="flex flex-1 flex-col items-center gap-1.5">
+                <span class="grid h-12 w-12 place-items-center rounded-full bg-ludo-blue text-h3 text-white" aria-hidden="true">&#9823;</span>
+                <span class="max-w-full truncate text-body-sm font-bold text-ink" id="p2-name">Waiting…</span>
+                <span class="pill-label">Opponent</span>
+              </div>
+            </div>
+            <p class="mt-4 rounded-tile bg-surface-page px-3 py-2 text-center text-meta text-muted">
+              Prize on win <span class="font-bold text-ink" id="b-prize">&#8377;0</span>
+              <span class="mx-1">&middot;</span> 5% commission
+            </p>
+          </div>
+        </section>
+
+        <!-- Status banner -->
+        <section class="px-4">
+          <p class="rounded-tile px-3 py-2.5 text-center text-body-sm font-bold" id="b-status">Loading…</p>
+        </section>
+
+        <!-- Room code -->
+        <section class="section" id="room-section">
+          <h2 class="section-title">Room code</h2>
+
+          <!-- creator sets it -->
+          <form class="mt-3 flex gap-2" id="room-form" hidden novalidate>
+            <label class="sr-only" for="room-input">8-digit room code</label>
+            <input class="field flex-1 tracking-[0.3em]" id="room-input" inputmode="numeric"
+                   maxlength="8" placeholder="00000000" autocomplete="off" aria-describedby="room-err">
+            <button class="btn btn-primary !px-6" type="submit">Set</button>
+          </form>
+          <p class="mt-2 hidden text-meta font-medium text-live" id="room-err" role="alert"></p>
+
+          <!-- everyone reads it -->
+          <div class="mt-3 rounded-card bg-accent-room p-6 text-center" id="room-display" hidden>
+            <p class="pill-label text-muted-dark">Room code</p>
+            <p class="mt-2 font-display text-h1 tracking-[0.2em] text-brand" id="room-code">&mdash;</p>
+            <button class="btn btn-outline mt-4" type="button" id="copy-room">Copy code</button>
+          </div>
+
+          <p class="mt-3 text-meta text-muted" id="room-hint"></p>
+        </section>
+
+        <div class="divider-x"></div>
+
+        <!-- Result -->
+        <section class="section" id="result-section" hidden>
+          <h2 class="section-title">Submit result</h2>
+          <p class="section-headline mt-1">Post the outcome once the match ends. Be honest — false claims are penalised.</p>
+
+          <fieldset class="mt-4 border-0 p-0">
+            <legend class="sr-only">Match outcome</legend>
+            <div class="grid grid-cols-3 gap-2" id="result-options">
+              <button class="btn btn-outline !min-h-[52px] flex-col !gap-0.5" type="button" data-result="won">
+                <span class="text-h3" aria-hidden="true">&#127942;</span><span class="text-meta">I won</span>
+              </button>
+              <button class="btn btn-outline !min-h-[52px] flex-col !gap-0.5" type="button" data-result="lost">
+                <span class="text-h3" aria-hidden="true">&#128533;</span><span class="text-meta">I lost</span>
+              </button>
+              <button class="btn btn-outline !min-h-[52px] flex-col !gap-0.5" type="button" data-result="cancel">
+                <span class="text-h3" aria-hidden="true">&#10006;</span><span class="text-meta">Cancel</span>
+              </button>
+            </div>
+          </fieldset>
+
+          <div class="mt-4" id="proof-wrap" hidden>
+            <label class="pill-label mb-1.5 block text-muted-dark" for="proof">Screenshot (required for a win)</label>
+            <input class="field !h-auto py-2.5 file:mr-3 file:rounded-md file:border-0 file:bg-brand file:px-3 file:py-1.5 file:text-meta file:font-bold file:text-white"
+                   id="proof" type="file" accept="image/*">
+            <p class="mt-1 text-meta text-muted">Stored locally in this demo — nothing is uploaded.</p>
+          </div>
+
+          <div class="mt-4" id="cancel-wrap" hidden>
+            <label class="pill-label mb-1.5 block text-muted-dark" for="cancel-reason">Cancel reason</label>
+            <select class="field" id="cancel-reason">
+              <option>Opponent did not join</option>
+              <option>Opponent abusing</option>
+              <option>Game did not start</option>
+              <option>Do not want to play</option>
+            </select>
+          </div>
+
+          <button class="btn btn-primary btn-block mt-5" type="button" id="submit-result" disabled>Submit result</button>
+        </section>
+
+        <!-- Creator can reject the player who joined -->
+        <section class="section" id="reject-section" hidden>
+          <button class="btn btn-outline btn-block !text-live hover:!border-live" type="button" id="reject-battle">
+            Reject this player
+          </button>
+          <p class="mt-2 text-meta text-muted">
+            Their amount is refunded and your battle goes back on the open board.
+          </p>
+        </section>
+
+        <!-- Creator can cancel while still open -->
+        <section class="section" id="cancel-section" hidden>
+          <button class="btn btn-outline btn-block !text-live hover:!border-live" type="button" id="cancel-battle">
+            Cancel battle &amp; refund
+          </button>
+        </section>
+
+        <!-- Settled -->
+        <section class="section" id="settled-section" hidden>
+          <div class="empty-state">
+            <span class="grid h-20 w-20 place-items-center rounded-full text-[40px]" id="settled-icon" aria-hidden="true">&#127942;</span>
+            <p class="empty-state__title" id="settled-title">Battle complete</p>
+            <p class="empty-state__text" id="settled-text"></p>
+            <a class="btn btn-primary mt-2" href="battles.html">Play another</a>
+          </div>
+        </section>
+      </div>
+
+      <!-- Not found -->
+      <section class="section" id="battle-missing" hidden>
+        <div class="empty-state">
+          <span class="grid h-20 w-20 place-items-center rounded-full bg-surface-page text-[40px]" aria-hidden="true">&#128269;</span>
+          <p class="empty-state__title">Battle not found</p>
+          <p class="empty-state__text">This battle may have been cancelled or already settled.</p>
+          <a class="btn btn-primary mt-2" href="battles.html">Back to battles</a>
+        </div>
+      </section>
