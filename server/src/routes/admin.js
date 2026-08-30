@@ -1,13 +1,16 @@
 /* Admin — accounts, disputes, KYC, deposits, withdrawals, chat, settings (MongoDB). */
 import express from 'express';
+import { SafeRouter } from '../lib/safe-router.js';
 import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
 import { col, nextId, now, credit, notify, getSettings, audit, withTransaction } from '../lib/db.js';
 import { verifyLogin, signAdmin, requireAdmin, createAdmin, adminCount, ROLES } from '../lib/admin-auth.js';
+import { bonusFor, BONUS_LABEL, payoutFor } from '../lib/config.js';
+import { payReferralCuts } from '../lib/settlement.js';
 import playerRoutes from './admin-players.js';
 import paymentAdminRoutes from './payments.js';
 
-const router = express.Router();
+const router = SafeRouter();
 
 const RANGES = { '1d': 864e5, '7d': 7 * 864e5, '30d': 30 * 864e5, all: null };
 const since = req => { const s = RANGES[req.query.range]; return s ? Date.now() - s : 0; };
@@ -107,7 +110,7 @@ router.get('/stats', async (req, res) => {
     ]).toArray(),
     col('users').countDocuments({ created_at: { $gte: from } }),
     col('users').countDocuments({ kyc_status: 'pending' }),
-    sumWhere('transactions', { type: 'credit', bucket: 'deposit', note: { $in: ['Deposit', 'Cashback bonus'] }, created_at: { $gte: from } }),
+    sumWhere('transactions', { type: 'credit', bucket: 'deposit', note: { $regex: /^(Deposit|Cashback bonus)/ }, created_at: { $gte: from } }),
     col('deposit_requests').countDocuments({ status: 'pending', created_at: { $gte: from } }),
     sumWhere('deposit_requests', { status: 'approved', created_at: { $gte: from } }),
     col('withdrawal_requests').countDocuments({ status: 'pending', created_at: { $gte: from } }),
@@ -172,7 +175,7 @@ router.get('/deposits/all', async (req, res) => {
     .find({ created_at: { $gte: from }, ...(status ? { status } : {}) }, { projection: { _id: 0 } })
     .sort({ created_at: -1 }).limit(300).toArray());
   const instant = await withUser(await col('transactions')
-    .find({ type: 'credit', bucket: 'deposit', note: { $in: ['Deposit', 'Cashback bonus'] }, created_at: { $gte: from } },
+    .find({ type: 'credit', bucket: 'deposit', note: { $regex: /^(Deposit|Cashback bonus)/ }, created_at: { $gte: from } },
       { projection: { _id: 0, id: 1, amount: 1, created_at: 1, note: 1, user_id: 1 } })
     .sort({ created_at: -1 }).limit(300).toArray());
   res.json({ requests: reqRows, instant });
@@ -195,8 +198,12 @@ router.post('/withdrawals/:id', requireAdmin('admin'), async (req, res) => {
       if (!w) throw new Error('NOTFOUND');
       await col('withdrawal_requests').updateOne({ id: w.id },
         { $set: { status: approve ? 'paid' : 'rejected', settled_at: now(), note: req.body?.note ?? null } }, { session });
-      await col('transactions').updateOne(
+      // Match the pending debit raised closest to this request, so a player
+      // with two same-value withdrawals cannot have the wrong row settled.
+      const pending = await col('transactions').find(
         { user_id: w.user_id, type: 'debit', status: 'pending', amount: w.amount },
+        { session }).sort({ created_at: 1 }).limit(1).toArray();
+      if (pending.length) await col('transactions').updateOne({ id: pending[0].id },
         { $set: { status: approve ? 'success' : 'failed' } }, { session });
       if (!approve) await col('wallets').updateOne({ user_id: w.user_id }, { $inc: { winnings: w.amount } }, { session });
       req._wd = w;
@@ -221,7 +228,8 @@ router.get('/disputes', async (req, res) => {
     { $lookup: { from: 'users', localField: 'creator_id', foreignField: 'id', as: 'c' } },
     { $lookup: { from: 'users', localField: 'acceptor_id', foreignField: 'id', as: 'a' } },
     { $addFields: { creator_name: { $arrayElemAt: ['$c.name', 0] }, acceptor_name: { $arrayElemAt: ['$a.name', 0] } } },
-    { $project: { _id: 0, id: 1, amount: 1, mode: 1, room_code: 1, created_at: 1, creator_id: 1, acceptor_id: 1, creator_name: 1, acceptor_name: 1 } },
+    { $project: { _id: 0, id: 1, amount: 1, mode: 1, room_code: 1, created_at: 1, creator_id: 1, acceptor_id: 1,
+                  creator_name: 1, acceptor_name: 1, auto_settle_at: 1 } },
   ]).toArray();
   const disputeIds = rows.map(b => b.id);
   const claims = await col('battle_claims').find({ battle_id: { $in: disputeIds } }, { projection: { _id: 0, battle_id: 1, user_id: 1, claim: 1, reason: 1, proof: 1 } }).toArray();
@@ -236,6 +244,9 @@ router.post('/disputes/:id/resolve', requireAdmin('admin'), async (req, res) => 
   const notes = [];
   try {
     await withTransaction(async session => {
+      // withTransaction re-runs this callback on a write conflict, so any
+      // state gathered here must be cleared or a retry doubles it.
+      notes.length = 0;
       const b = await col('battles').findOne({ id }, { session });
       if (!b) throw new Error('NOTFOUND');
       if (b.status !== 'disputed') throw new Error('NOTDISPUTED');
@@ -246,25 +257,21 @@ router.post('/disputes/:id/resolve', requireAdmin('admin'), async (req, res) => 
         [b.creator_id, b.acceptor_id].forEach(u => notes.push([u, 'Dispute resolved', `Your ₹${b.amount} stake was refunded.${note ? ' ' + note : ''}`]));
       } else {
         const settings = await getSettings();
-        const payout = Math.round(b.amount * 2 * (1 - settings.commission));
+        const winner = outcome === 'creator' ? b.creator_id : b.acceptor_id;
+        const loser  = outcome === 'creator' ? b.acceptor_id : b.creator_id;
+        if (!winner || !loser) throw new Error('NOOPPONENT');
+        const payout = payoutFor(b.amount, settings.commission);
         await credit(winner, 'winnings', payout, `Dispute resolved in your favour — #${id.slice(-5)}`, id, 'success', session);
         await col('battles').updateOne({ id }, { $set: { status: 'completed', winner_id: winner, payout, settled_at: now() } }, { session });
         notes.push([winner, 'Dispute resolved — you won', `₹${payout} credited.${note ? ' ' + note : ''}`],
                    [loser, 'Dispute resolved', `The battle was awarded to your opponent.${note ? ' ' + note : ''}`]);
 
-        for (const uid of [b.creator_id, b.acceptor_id]) {
-          const u = await col('users').findOne({ id: uid }, { session });
-          if (!u?.referred_by) continue;
-          const cut = Math.round(b.amount * (settings.referral_rate || 0.01));
-          if (cut <= 0) continue;
-          await credit(u.referred_by, 'referral', cut, `Referral bonus — dispute #${id.slice(-5)}`, id, 'success', session);
-          await col('referrals').updateOne({ referrer_id: u.referred_by, referee_id: uid }, { $inc: { earned: cut } }, { session });
-          notes.push([u.referred_by, 'Referral bonus earned! 💰', `You earned ₹${cut} from ${u.name || 'your referral'}'s match.`]);
-        }
+        await payReferralCuts(session, b, settings, notes, 'dispute');
       }
     });
   } catch (e) {
-    const map = { NOTFOUND: [404, 'Battle not found.'], NOTDISPUTED: [409, 'That battle is not disputed.'] };
+    const map = { NOTFOUND: [404, 'Battle not found.'], NOTDISPUTED: [409, 'That battle is not disputed.'],
+      NOOPPONENT: [409, 'That battle has no opponent to award it to.'] };
     if (map[e.message]) return res.status(map[e.message][0]).json({ error: map[e.message][1] });
     throw e;
   }
@@ -310,9 +317,9 @@ router.post('/deposits/:id', requireAdmin('admin'), async (req, res) => {
         { $set: { status: approve ? 'approved' : 'rejected', settled_at: now(), note: req.body?.note ?? null } }, { session });
       if (approve) {
         await credit(d.user_id, 'deposit', d.amount, `Deposit verified (UTR ${d.utr})`, null, 'success', session);
-        const bonus = Math.floor(d.amount / 1000) * 50;
+        const bonus = bonusFor(d.amount);
         if (bonus > 0) {
-          await credit(d.user_id, 'deposit', bonus, 'Cashback bonus (₹50 per ₹1000)', null, 'success', session);
+          await credit(d.user_id, 'deposit', bonus, BONUS_LABEL, null, 'success', session);
         }
       }
     });
@@ -331,12 +338,29 @@ router.post('/users/:id/penalty', requireAdmin('admin'), async (req, res) => {
   const amount = Number(req.body?.amount);
   if (!Number.isInteger(amount) || amount <= 0) return res.status(400).json({ error: 'Enter a whole-rupee amount.' });
   const uid = Number(req.params.id);
+  if (!Number.isInteger(uid)) return res.status(400).json({ error: 'Invalid user id.' });
   const w = await col('wallets').findOne({ user_id: uid });
   if (!w) return res.status(404).json({ error: 'User not found.' });
-  const fromWin = Math.min(w.winnings, amount);
-  await col('wallets').updateOne({ user_id: uid }, { $inc: { winnings: -fromWin, deposit: -(amount - fromWin) } });
-  await col('transactions').insertOne({ id: await nextId('transactions'), user_id: uid, type: 'debit',
-    bucket: 'winnings', amount, note: req.body?.reason || 'Penalty', status: 'success', ref_id: null, created_at: now() });
+
+  // Take winnings first, then deposit, and never below zero — the old version
+  // subtracted the whole remainder from deposit and left it negative.
+  const available = (w.winnings || 0) + (w.deposit || 0);
+  if (amount > available)
+    return res.status(400).json({ error: `That player only has ₹${available}. Penalise ₹${available} or less.` });
+  const fromWin = Math.min(w.winnings || 0, amount);
+  const fromDep = amount - fromWin;
+
+  await withTransaction(async session => {
+    await col('wallets').updateOne({ user_id: uid },
+      { $inc: { winnings: -fromWin, deposit: -fromDep } }, { session });
+    // One row per bucket, so the ledger still reconciles against the wallet.
+    if (fromWin) await col('transactions').insertOne({ id: await nextId('transactions'), user_id: uid,
+      type: 'debit', bucket: 'winnings', amount: fromWin, note: req.body?.reason || 'Penalty',
+      status: 'success', ref_id: null, created_at: now() }, { session });
+    if (fromDep) await col('transactions').insertOne({ id: await nextId('transactions'), user_id: uid,
+      type: 'debit', bucket: 'deposit', amount: fromDep, note: req.body?.reason || 'Penalty',
+      status: 'success', ref_id: null, created_at: now() }, { session });
+  });
   await notify(uid, 'Penalty applied', req.body?.reason || 'A penalty was applied to your account.');
   await audit(req.admin, 'user.penalty', { targetType: 'user', targetId: req.params.id, detail: { amount, reason: req.body?.reason }, ip: req.clientIp });
   res.json({ ok: true });

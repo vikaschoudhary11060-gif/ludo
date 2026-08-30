@@ -1,16 +1,17 @@
 /* Wallet — balance, deposit (simulated), withdraw, transactions, referral redeem (MongoDB). */
 import express from 'express';
+import { SafeRouter } from '../lib/safe-router.js';
 import { z } from 'zod';
 import { col, nextId, now, credit, getWallet, notify, getSettings, withTransaction } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
-import { DEPOSIT, WITHDRAW } from '../lib/config.js';
+import { DEPOSIT, WITHDRAW, bonusFor, BONUS_LABEL, IS_DEV } from '../lib/config.js';
 import { methodForUser } from './payments.js';
 
-const router = express.Router();
+const router = SafeRouter();
 
 /* GET /api/wallet */
 router.get('/', requireAuth, async (req, res) => {
-  const w = await getWallet(req.user.id);
+  const w = await getWallet(req.user.id);   // never null — created on demand
   res.json({ wallet: { ...w, total: w.deposit + w.winnings } });
 });
 
@@ -23,8 +24,13 @@ router.get('/transactions', requireAuth, async (req, res) => {
   res.json({ transactions: rows });
 });
 
-/* POST /api/wallet/deposit */
+/* POST /api/wallet/deposit — SIMULATED top-up.
+   This credits a wallet with no payment behind it, so it is a local testing
+   aid only. Exposed in production it is an unlimited free-money endpoint:
+   any signed-in user could mint balance and withdraw it. Real deposits go
+   through /deposit-request, which an admin verifies against the UTR. */
 router.post('/deposit', requireAuth, async (req, res) => {
+  if (!IS_DEV) return res.status(404).json({ error: 'Not found.' });
   if (!(await getSettings()).deposit_open)
     return res.status(503).json({ error: 'Deposits are temporarily closed. Please come back later.' });
   const parsed = z.object({ amount: z.number().int().positive() }).safeParse(req.body || {});
@@ -33,10 +39,10 @@ router.post('/deposit', requireAuth, async (req, res) => {
   if (amount < DEPOSIT.min) return res.status(400).json({ error: `Minimum deposit is ₹${DEPOSIT.min}.` });
   if (amount > DEPOSIT.max) return res.status(400).json({ error: `Maximum deposit is ₹${DEPOSIT.max}.` });
 
-  const bonus = Math.floor(amount / 1000) * 50;
+  const bonus = bonusFor(amount);
   await withTransaction(async session => {
     await credit(req.user.id, 'deposit', amount, 'Deposit', null, 'success', session);
-    if (bonus > 0) await credit(req.user.id, 'deposit', bonus, 'Cashback bonus (₹50 per ₹1000)', null, 'success', session);
+    if (bonus > 0) await credit(req.user.id, 'deposit', bonus, BONUS_LABEL, null, 'success', session);
   });
   const w = await getWallet(req.user.id);
   res.json({ ok: true, credited: amount + bonus, bonus, wallet: { ...w, total: w.deposit + w.winnings } });
@@ -102,40 +108,65 @@ router.post('/withdraw', requireAuth, async (req, res) => {
   if (method === 'bank' && !(accountName && accountNumber && ifsc))
     return res.status(400).json({ error: 'Enter the full bank details.' });
 
+  // Friendly pre-checks. These are advisory only — the authoritative check is
+  // the conditional update below, because two requests can pass this point
+  // concurrently and both believe there is enough to withdraw.
   const w = await getWallet(req.user.id);
   if (w.winnings <= 0)
     return res.status(400).json({ error: 'Only winnings can be withdrawn. Play a battle and win to build a withdrawable balance.', code: 'NO_WINNINGS' });
   if (w.winnings < amount)
     return res.status(400).json({ error: `You can withdraw up to ₹${w.winnings} (your winnings). Deposit money cannot be withdrawn.`, code: 'EXCEEDS_WINNINGS' });
 
-  await withTransaction(async session => {
-    await col('wallets').updateOne({ user_id: req.user.id }, { $inc: { winnings: -amount } }, { session });
-    await col('transactions').insertOne({
-      id: await nextId('transactions'), user_id: req.user.id, type: 'debit', bucket: 'winnings',
-      amount, note: method === 'upi' ? `Withdrawal to ${upiId}` : `Withdrawal to ${accountNumber.slice(-4)}`,
-      status: 'pending', ref_id: null, created_at: now(),
-    }, { session });
-    await col('withdrawal_requests').insertOne({
-      id: await nextId('withdrawal_requests'), user_id: req.user.id, amount, method,
-      upi_id: upiId ?? null,
-      account_name: accountName ? `${accountName}${bankName ? ' · ' + bankName : ''}` : null,
-      account_number: accountNumber ?? null, ifsc: ifsc ?? null,
-      status: 'pending', note: null, created_at: now(), settled_at: null,
-    }, { session });
-  });
+  try {
+    await withTransaction(async session => {
+      /* Filter and update in one atomic operation. An unconditional $inc here
+         let two concurrent withdrawals both pass the check above and drive the
+         balance negative — the player could cash out the same winnings twice. */
+      const debited = await col('wallets').updateOne(
+        { user_id: req.user.id, winnings: { $gte: amount } },
+        { $inc: { winnings: -amount } }, { session });
+      if (debited.matchedCount === 0) throw new Error('EXCEEDS_WINNINGS');
+      await col('transactions').insertOne({
+        id: await nextId('transactions'), user_id: req.user.id, type: 'debit', bucket: 'winnings',
+        amount, note: method === 'upi' ? `Withdrawal to ${upiId}` : `Withdrawal to ${accountNumber.slice(-4)}`,
+        status: 'pending', ref_id: null, created_at: now(),
+      }, { session });
+      await col('withdrawal_requests').insertOne({
+        id: await nextId('withdrawal_requests'), user_id: req.user.id, amount, method,
+        upi_id: upiId ?? null,
+        account_name: accountName ? `${accountName}${bankName ? ' · ' + bankName : ''}` : null,
+        account_number: accountNumber ?? null, ifsc: ifsc ?? null,
+        status: 'pending', note: null, created_at: now(), settled_at: null,
+      }, { session });
+    });
+  } catch (e) {
+    if (e.message === 'EXCEEDS_WINNINGS')
+      return res.status(400).json({ error: 'Your withdrawable balance changed. Refresh and try again.', code: 'EXCEEDS_WINNINGS' });
+    throw e;
+  }
   await notify(req.user.id, 'Withdrawal requested', `₹${amount} is being processed.`);
   res.json({ ok: true, status: 'pending' });
 });
 
 /* POST /api/wallet/redeem-referral */
 router.post('/redeem-referral', requireAuth, async (req, res) => {
-  const w = await getWallet(req.user.id);
-  if (!w || w.referral <= 0) return res.status(400).json({ error: 'No referral balance to redeem.' });
-  const amount = w.referral;
+  /* Zero the bucket and learn what it held in one atomic step. Reading the
+     amount first and zeroing afterwards let two concurrent redeems both read
+     the same balance and both credit it. */
+  let amount = 0;
   await withTransaction(async session => {
-    await col('wallets').updateOne({ user_id: req.user.id }, { $set: { referral: 0 } }, { session });
+    const before = await col('wallets').findOneAndUpdate(
+      { user_id: req.user.id, referral: { $gt: 0 } },
+      { $set: { referral: 0 } },
+      { session, returnDocument: 'before' });
+    if (!before) throw new Error('NO_REFERRAL');
+    amount = before.referral;
     await credit(req.user.id, 'deposit', amount, 'Referral earnings redeemed', null, 'success', session);
+  }).catch(e => {
+    if (e.message === 'NO_REFERRAL') return null;
+    throw e;
   });
+  if (!amount) return res.status(400).json({ error: 'No referral balance to redeem.' });
   await notify(req.user.id, 'Referral redeemed! 🎁', `₹${amount} moved to your deposit balance.`);
   const updatedWallet = await getWallet(req.user.id);
   res.json({ ok: true, redeemed: amount, wallet: { ...updatedWallet, total: updatedWallet.deposit + updatedWallet.winnings } });

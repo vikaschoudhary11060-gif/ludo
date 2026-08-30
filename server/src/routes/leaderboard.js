@@ -1,9 +1,10 @@
 /* Leaderboard — ranked by battles won in the selected window (MongoDB). */
 import express from 'express';
+import { SafeRouter } from '../lib/safe-router.js';
 import { col } from '../lib/db.js';
 import { optionalAuth } from '../lib/auth.js';
 
-const router = express.Router();
+const router = SafeRouter();
 const WINDOWS = { today: 864e5, week: 7 * 864e5, all: null };
 
 router.get('/', optionalAuth, async (req, res) => {

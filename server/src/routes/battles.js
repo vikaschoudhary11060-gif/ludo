@@ -4,41 +4,18 @@
    battle, conflict marks it disputed for an admin. Money moves inside Mongo
    transactions; notifications are sent after commit. */
 import express from 'express';
+import { SafeRouter } from '../lib/safe-router.js';
 import crypto from 'node:crypto';
 import { z } from 'zod';
-import { col, nextId, now, credit, debit, notify, getSettings, withTransaction } from '../lib/db.js';
+import { col, now, credit, debit, spendable, notify, getSettings, withTransaction } from '../lib/db.js';
 import { requireAuth, optionalAuth } from '../lib/auth.js';
-import { MODES } from '../lib/config.js';
+import { MODES, CLAIM_GRACE_MS, GRACE_LABEL, CANCEL_LABEL, cancelWindowOpen, payoutFor } from '../lib/config.js';
+import { payReferralCuts } from '../lib/settlement.js';
+import { isPlayer, shape, fetchBattles, fetchBattle } from '../lib/battle-view.js';
 
-const router = express.Router();
+const router = SafeRouter();
 const newId = () => crypto.randomBytes(6).toString('hex');
 
-function shape(b) {
-  return {
-    id: b.id, mode: b.mode, amount: b.amount, status: b.status,
-    creator:  b.creator_id  ? { id: b.creator_id,  name: b.creator_name }  : null,
-    acceptor: b.acceptor_id ? { id: b.acceptor_id, name: b.acceptor_name } : null,
-    roomCode: b.room_code, winnerId: b.winner_id, payout: b.payout,
-    createdAt: b.created_at, settledAt: b.settled_at,
-  };
-}
-
-/* Fetch battles with creator/acceptor names joined in. */
-async function fetchBattles(match, limit = 100) {
-  return col('battles').aggregate([
-    { $match: match },
-    { $sort: { created_at: -1 } },
-    { $limit: limit },
-    { $lookup: { from: 'users', localField: 'creator_id', foreignField: 'id', as: 'c' } },
-    { $lookup: { from: 'users', localField: 'acceptor_id', foreignField: 'id', as: 'a' } },
-    { $addFields: { creator_name: { $arrayElemAt: ['$c.name', 0] }, acceptor_name: { $arrayElemAt: ['$a.name', 0] } } },
-    { $project: { c: 0, a: 0, _id: 0 } },
-  ]).toArray();
-}
-async function fetchBattle(id) {
-  const [b] = await fetchBattles({ id }, 1);
-  return b || null;
-}
 
 /* GET /api/battles?mode=lite&status=open */
 router.get('/', optionalAuth, async (req, res) => {
@@ -46,22 +23,25 @@ router.get('/', optionalAuth, async (req, res) => {
   const status = ['open', 'requested', 'waiting', 'running'].includes(req.query.status) ? req.query.status : null;
   const match = { mode, status: status ? status : { $in: ['open', 'requested', 'waiting', 'running'] } };
   const rows = await fetchBattles(match, 100);
-  res.json({ battles: rows.map(shape) });
+  res.json({ battles: rows.map(b => shape(b, req.user?.id ?? null)) });
 });
 
 /* GET /api/battles/mine */
 router.get('/mine', requireAuth, async (req, res) => {
   const rows = await fetchBattles({ $or: [{ creator_id: req.user.id }, { acceptor_id: req.user.id }] }, 200);
-  res.json({ battles: rows.map(shape) });
+  res.json({ battles: rows.map(b => shape(b, req.user.id)) });
 });
 
 /* GET /api/battles/:id */
 router.get('/:id', optionalAuth, async (req, res) => {
   const b = await fetchBattle(req.params.id);
   if (!b) return res.status(404).json({ error: 'Battle not found.' });
+  const viewerId = req.user?.id ?? null;
   const claims = await col('battle_claims').find({ battle_id: b.id },
     { projection: { _id: 0, user_id: 1, claim: 1, reason: 1 } }).toArray();
-  res.json({ battle: shape(b), claims });
+  // Onlookers see that a claim exists, not what was written in it.
+  const visible = isPlayer(b, viewerId) ? claims : claims.map(c => ({ user_id: c.user_id, claim: c.claim }));
+  res.json({ battle: shape(b, viewerId), claims: visible });
 });
 
 /* POST /api/battles  { mode, amount } */
@@ -97,7 +77,7 @@ router.post('/', requireAuth, async (req, res) => {
     if (map[e.message]) return res.status(map[e.message][0]).json({ error: map[e.message][1] });
     throw e;
   }
-  const battle = shape(await fetchBattle(id));
+  const battle = shape(await fetchBattle(id), req.user.id);
   req.app.get('io')?.emit('battle:created', battle);
   res.status(201).json({ battle });
 });
@@ -114,9 +94,10 @@ router.post('/:id/accept', requireAuth, async (req, res) => {
       if (b.creator_id === req.user.id) throw new Error('OWN');
       const already = await col('battles').findOne({ acceptor_id: req.user.id, status: { $in: ['requested', 'waiting', 'running'] } }, { session });
       if (already) throw new Error('ENROLLED');
-      const { spendable } = await import('../lib/db.js');
-      if ((await spendable(req.user.id)) < b.amount) throw new Error('INSUFFICIENT');
-      await col('battles').updateOne({ id }, { $set: { acceptor_id: req.user.id, status: 'requested' } }, { session });
+      if ((await spendable(req.user.id, session)) < b.amount) throw new Error('INSUFFICIENT');
+      const taken = await col('battles').updateOne({ id, status: 'open' },
+        { $set: { acceptor_id: req.user.id, status: 'requested' } }, { session });
+      if (taken.matchedCount === 0) throw new Error('CLOSED');   // someone got there first
       creatorId = b.creator_id; amount = b.amount;
     });
   } catch (e) {
@@ -127,7 +108,7 @@ router.post('/:id/accept', requireAuth, async (req, res) => {
     throw e;
   }
   await notify(creatorId, 'Opponent request', `${req.user.name} wants to join your ₹${amount} battle.`);
-  const battle = shape(await fetchBattle(id));
+  const battle = shape(await fetchBattle(id), req.user.id);
   const io = req.app.get('io');
   io?.to(`battle:${id}`).emit('battle:updated', battle);
   io?.emit('battle:removed', { id });
@@ -145,8 +126,11 @@ router.post('/:id/accept-request', requireAuth, async (req, res) => {
       if (b.creator_id !== req.user.id) throw new Error('FORBIDDEN');
       if (b.status !== 'requested') throw new Error('WRONGSTATE');
       if (!b.acceptor_id) throw new Error('NOOPPONENT');
+      // Claim the transition first: if it does not apply, no money moves.
+      const claimed = await col('battles').updateOne({ id, status: 'requested' },
+        { $set: { status: 'waiting' } }, { session });
+      if (claimed.matchedCount === 0) throw new Error('WRONGSTATE');
       if (!(await debit(b.acceptor_id, b.amount, 'Battle stake', id, session))) throw new Error('OPPONENT_INSUFFICIENT');
-      await col('battles').updateOne({ id }, { $set: { status: 'waiting' } }, { session });
       acceptorId = b.acceptor_id; amount = b.amount;
     });
   } catch (e) {
@@ -161,14 +145,14 @@ router.post('/:id/accept-request', requireAuth, async (req, res) => {
     throw e;
   }
   await notify(acceptorId, 'Request accepted!', `Your request for the ₹${amount} battle was accepted. Waiting for room code.`);
-  const battle = shape(await fetchBattle(id));
+  const battle = shape(await fetchBattle(id), req.user.id);
   const io = req.app.get('io');
   io?.to(`battle:${id}`).emit('battle:updated', battle);
   res.json({ battle });
 });
 
 /* POST /api/battles/:id/reject-request (Host rejects opponent's request) */
-router.post('/:id/reject-request', requireAuth, async (req, res) => {
+const rejectRequestHandler = async (req, res) => {
   const id = req.params.id;
   let acceptorId, amount;
   try {
@@ -177,10 +161,14 @@ router.post('/:id/reject-request', requireAuth, async (req, res) => {
       if (!b) throw new Error('NOTFOUND');
       if (b.creator_id !== req.user.id) throw new Error('FORBIDDEN');
       if (b.status !== 'requested' && b.status !== 'waiting') throw new Error('WRONGSTATE');
+      // Claim the transition before refunding, so a double tap cannot pay twice.
+      const rejected = await col('battles').updateOne(
+        { id, status: b.status },
+        { $set: { acceptor_id: null, status: 'open' } }, { session });
+      if (rejected.matchedCount === 0) throw new Error('WRONGSTATE');
       if (b.status === 'waiting' && b.acceptor_id) {
         await credit(b.acceptor_id, 'deposit', b.amount, 'Challenge rejected — refund', id, 'success', session);
       }
-      await col('battles').updateOne({ id }, { $set: { acceptor_id: null, status: 'open' } }, { session });
       acceptorId = b.acceptor_id; amount = b.amount;
     });
   } catch (e) {
@@ -190,12 +178,13 @@ router.post('/:id/reject-request', requireAuth, async (req, res) => {
     throw e;
   }
   if (acceptorId) await notify(acceptorId, 'Request declined', `${req.user.name} declined your request for the ₹${amount} battle.`);
-  const battle = shape(await fetchBattle(id));
+  const battle = shape(await fetchBattle(id), req.user.id);
   const io = req.app.get('io');
   io?.to(`battle:${id}`).emit('battle:updated', battle);
   io?.emit('battle:created', battle);
   res.json({ battle });
-});
+};
+router.post('/:id/reject-request', requireAuth, rejectRequestHandler);
 
 /* POST /api/battles/:id/cancel-request (Opponent cancels their own join request) */
 router.post('/:id/cancel-request', requireAuth, async (req, res) => {
@@ -206,7 +195,9 @@ router.post('/:id/cancel-request', requireAuth, async (req, res) => {
       if (!b) throw new Error('NOTFOUND');
       if (b.acceptor_id !== req.user.id) throw new Error('FORBIDDEN');
       if (b.status !== 'requested') throw new Error('WRONGSTATE');
-      await col('battles').updateOne({ id }, { $set: { acceptor_id: null, status: 'open' } }, { session });
+      const undone = await col('battles').updateOne({ id, status: 'requested', acceptor_id: req.user.id },
+        { $set: { acceptor_id: null, status: 'open' } }, { session });
+      if (undone.matchedCount === 0) throw new Error('WRONGSTATE');
     });
   } catch (e) {
     const map = { NOTFOUND: [404, 'Battle not found.'], FORBIDDEN: [403, 'You are not the requesting player.'],
@@ -214,7 +205,7 @@ router.post('/:id/cancel-request', requireAuth, async (req, res) => {
     if (map[e.message]) return res.status(map[e.message][0]).json({ error: map[e.message][1] });
     throw e;
   }
-  const battle = shape(await fetchBattle(id));
+  const battle = shape(await fetchBattle(id), req.user.id);
   const io = req.app.get('io');
   io?.to(`battle:${id}`).emit('battle:updated', battle);
   io?.emit('battle:created', battle);
@@ -230,8 +221,12 @@ router.post('/:id/cancel', requireAuth, async (req, res) => {
       if (!b) throw new Error('NOTFOUND');
       if (b.creator_id !== req.user.id) throw new Error('FORBIDDEN');
       if (!['open', 'requested'].includes(b.status)) throw new Error('CLOSED');
+      // Claim the cancellation first so a double tap cannot refund twice.
+      const cancelled = await col('battles').updateOne(
+        { id, status: { $in: ['open', 'requested'] } },
+        { $set: { status: 'cancelled', settled_at: now() } }, { session });
+      if (cancelled.matchedCount === 0) throw new Error('CLOSED');
       await credit(req.user.id, 'deposit', b.amount, 'Battle cancelled — refund', id, 'success', session);
-      await col('battles').updateOne({ id }, { $set: { status: 'cancelled', settled_at: now() } }, { session });
     });
   } catch (e) {
     const map = { NOTFOUND: [404, 'Battle not found.'], FORBIDDEN: [403, 'Only the creator can cancel.'],
@@ -244,9 +239,7 @@ router.post('/:id/cancel', requireAuth, async (req, res) => {
 });
 
 /* POST /api/battles/:id/reject (Legacy alias for reject-request) */
-router.post('/:id/reject', requireAuth, async (req, res) => {
-  return router.handle({ ...req, url: `/${req.params.id}/reject-request` }, res);
-});
+router.post('/:id/reject', requireAuth, rejectRequestHandler);
 
 /* POST /api/battles/:id/room  { roomCode } */
 router.post('/:id/room', requireAuth, async (req, res) => {
@@ -256,9 +249,13 @@ router.post('/:id/room', requireAuth, async (req, res) => {
   if (!b) return res.status(404).json({ error: 'Battle not found.' });
   if (b.creator_id !== req.user.id) return res.status(403).json({ error: 'Only the creator sets the room code.' });
   if (b.status !== 'waiting') return res.status(409).json({ error: 'Wait for an opponent to join first.' });
-  await col('battles').updateOne({ id: b.id }, { $set: { room_code: code, status: 'running' } });
+  /* Filter on the status we expect so two taps cannot both apply. Re-stamping
+     room_set_at would silently reopen the one-minute cancel window. */
+  const set = await col('battles').updateOne({ id: b.id, status: 'waiting' },
+    { $set: { room_code: code, status: 'running', room_set_at: now() } });
+  if (set.matchedCount === 0) return res.status(409).json({ error: 'The room code has already been set.' });
   if (b.acceptor_id) await notify(b.acceptor_id, 'Room code ready', `Join room ${code} to start the match.`);
-  const battle = shape(await fetchBattle(b.id));
+  const battle = shape(await fetchBattle(b.id), req.user.id);
   req.app.get('io')?.to(`battle:${b.id}`).emit('battle:updated', battle);
   res.json({ battle });
 });
@@ -279,11 +276,22 @@ router.post('/:id/result', requireAuth, async (req, res) => {
   let outcome;
   try {
     outcome = await withTransaction(async session => {
+      // withTransaction re-runs this callback on a write conflict, so any
+      // state gathered here must be cleared or a retry doubles it.
+      notes.length = 0;
       const b = await col('battles').findOne({ id }, { session });
       if (!b) throw new Error('NOTFOUND');
       if (![b.creator_id, b.acceptor_id].includes(req.user.id)) throw new Error('FORBIDDEN');
-      if (b.status !== 'running') throw new Error('NOTRUNNING');
+      // A battle awaiting the opponent's report sits in `disputed`, and that
+      // opponent still has to be able to answer.
+      const awaitingOpponent = b.status === 'disputed' && !!b.auto_settle_at;
+      if (b.status !== 'running' && !awaitingOpponent) throw new Error('NOTRUNNING');
       if (claim === 'won' && !proof) throw new Error('PROOF');
+
+      // Backing out is only allowed in the first minute after the room code
+      // goes up; after that the match must be played and reported.
+      if (claim === 'cancel' && !cancelWindowOpen(b.room_set_at, b.created_at, now()))
+        throw new Error('CANCEL_CLOSED');
 
       const existing = await col('battle_claims').findOne({ battle_id: id, user_id: req.user.id }, { session });
       if (existing) throw new Error('ALREADY:' + existing.claim);
@@ -292,7 +300,21 @@ router.post('/:id/result', requireAuth, async (req, res) => {
       }, { session });
 
       const claims = await col('battle_claims').find({ battle_id: id }, { session }).toArray();
-      if (claims.length < 2) return { state: 'pending' };
+      if (claims.length < 2) {
+        /* One side has reported and the other has not. Hold the battle in
+           dispute; the sweeper settles it on this claim if the opponent is
+           still silent when the grace period runs out. */
+        const settleAt = now() + CLAIM_GRACE_MS;
+        // Guarded like every other transition: never resurrect a battle that
+        // was settled while this claim was in flight.
+        const parked = await col('battles').updateOne({ id, status: b.status },
+          { $set: { status: 'disputed', auto_settle_at: settleAt } }, { session });
+        if (parked.matchedCount === 0) throw new Error('NOTRUNNING');
+        const opponent = req.user.id === b.creator_id ? b.acceptor_id : b.creator_id;
+        if (opponent) notes.push([opponent, 'Confirm your result',
+          `Your opponent reported the ₹${b.amount} battle. Report yours within ${GRACE_LABEL} or theirs stands.`]);
+        return { state: 'awaiting-opponent', autoSettleAt: settleAt };
+      }
 
       const byUser = Object.fromEntries(claims.map(c => [c.user_id, c.claim]));
       const a = b.creator_id, c2 = b.acceptor_id;
@@ -300,7 +322,8 @@ router.post('/:id/result', requireAuth, async (req, res) => {
       if (byUser[a] === 'cancel' && byUser[c2] === 'cancel') {
         await credit(a, 'deposit', b.amount, 'Battle cancelled — refund', id, 'success', session);
         await credit(c2, 'deposit', b.amount, 'Battle cancelled — refund', id, 'success', session);
-        await col('battles').updateOne({ id }, { $set: { status: 'cancelled', settled_at: now() } }, { session });
+        await col('battles').updateOne({ id },
+          { $set: { status: 'cancelled', settled_at: now() }, $unset: { auto_settle_at: '' } }, { session });
         notes.push([a, 'Battle cancelled', 'Your stake was refunded.'], [c2, 'Battle cancelled', 'Your stake was refunded.']);
         return { state: 'cancelled' };
       }
@@ -308,39 +331,35 @@ router.post('/:id/result', requireAuth, async (req, res) => {
       const winner = byUser[a] === 'won' && byUser[c2] === 'lost' ? a
                    : byUser[c2] === 'won' && byUser[a] === 'lost' ? c2 : null;
       if (!winner) {
-        await col('battles').updateOne({ id }, { $set: { status: 'disputed' } }, { session });
+        await col('battles').updateOne({ id },
+          { $set: { status: 'disputed' }, $unset: { auto_settle_at: '' } }, { session });
         notes.push([a, 'Result under review', 'Both players claimed differently. Support will review the proof.'],
                    [c2, 'Result under review', 'Both players claimed differently. Support will review the proof.']);
         return { state: 'disputed' };
       }
 
-      const payout = Math.round(b.amount * 2 * (1 - settings.commission));
+      const payout = payoutFor(b.amount, settings.commission);
       await credit(winner, 'winnings', payout, `Battle won — #${id.slice(-5)}`, id, 'success', session);
-      await col('battles').updateOne({ id }, { $set: { status: 'completed', winner_id: winner, payout, settled_at: now() } }, { session });
+      await col('battles').updateOne({ id },
+        { $set: { status: 'completed', winner_id: winner, payout, settled_at: now() },
+          $unset: { auto_settle_at: '' } }, { session });
       notes.push([winner, 'You won!', `₹${payout} credited for battle #${id.slice(-5)}.`],
                  [winner === a ? c2 : a, 'Battle lost', 'Better luck next time.']);
 
-      for (const uid of [a, c2]) {
-        const u = await col('users').findOne({ id: uid }, { session });
-        if (!u?.referred_by) continue;
-        const cut = Math.round(b.amount * (settings.referral_rate || 0.01));
-        if (cut <= 0) continue;
-        await credit(u.referred_by, 'referral', cut, `Referral bonus — battle #${id.slice(-5)}`, id, 'success', session);
-        await col('referrals').updateOne({ referrer_id: u.referred_by, referee_id: uid }, { $inc: { earned: cut } }, { session });
-        notes.push([u.referred_by, 'Referral bonus earned! 💰', `You earned ₹${cut} from ${u.name || 'your referral'}'s match.`]);
-      }
+      await payReferralCuts(session, b, settings, notes);
       return { state: 'completed', winner, payout };
     });
   } catch (e) {
     if (e.message.startsWith('ALREADY:'))
       return res.status(409).json({ error: `You have already updated your battle result for ${e.message.slice(8).toUpperCase()}.` });
     const map = { NOTFOUND: [404, 'Battle not found.'], FORBIDDEN: [403, 'You are not in this battle.'],
-      NOTRUNNING: [409, 'This battle is not in progress.'], PROOF: [400, 'Attach a screenshot to claim a win.'] };
+      NOTRUNNING: [409, 'This battle is not in progress.'], PROOF: [400, 'Attach a screenshot to claim a win.'],
+      CANCEL_CLOSED: [409, `The cancel window closed ${CANCEL_LABEL} after the room code went up. Play the match and report the result.`] };
     if (map[e.message]) return res.status(map[e.message][0]).json({ error: map[e.message][1] });
     throw e;
   }
   for (const [uid, title, body] of notes) await notify(uid, title, body);
-  const battle = shape(await fetchBattle(id));
+  const battle = shape(await fetchBattle(id), req.user.id);
   req.app.get('io')?.to(`battle:${id}`).emit('battle:updated', battle);
   res.json({ battle, ...outcome });
 });

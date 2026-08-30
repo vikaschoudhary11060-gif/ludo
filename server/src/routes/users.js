@@ -1,10 +1,12 @@
 /* Profile, KYC, notifications, referrals (MongoDB). */
 import express from 'express';
+import { SafeRouter } from '../lib/safe-router.js';
 import { z } from 'zod';
+import { IS_DEV } from '../lib/config.js';
 import { col, now, publicUser, notify } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
 
-const router = express.Router();
+const router = SafeRouter();
 
 /* PATCH /api/users/me */
 router.patch('/me', requireAuth, async (req, res) => {
@@ -50,8 +52,9 @@ router.post('/email/verify-request', requireAuth, async (req, res) => {
   const code = String(Math.floor(100000 + Math.random() * 900000));
   await col('otps').updateOne({ phone: 'email:' + req.user.id },
     { $set: { phone: 'email:' + req.user.id, code, expires_at: now() + 10 * 60 * 1000, attempts: 0 } }, { upsert: true });
-  console.log(`[email-verify] ${req.user.email} -> ${code}`);
-  res.json({ ok: true, ...(process.env.EXPOSE_OTP === 'true' ? { devCode: code } : {}) });
+  // Same rule as the login OTP: never hand the code back, or log it, in production.
+  if (IS_DEV) console.log(`[email-verify] ${req.user.email} -> ${code}`);
+  res.json({ ok: true, ...(IS_DEV && process.env.EXPOSE_OTP === 'true' ? { devCode: code } : {}) });
 });
 
 /* POST /api/users/email/verify */

@@ -1,10 +1,11 @@
 /* Live support chat — player side (MongoDB). */
 import express from 'express';
+import { SafeRouter } from '../lib/safe-router.js';
 import { z } from 'zod';
 import { col, nextId, now } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
 
-const router = express.Router();
+const router = SafeRouter();
 
 /** Every player has exactly one thread; create it lazily. */
 export async function threadFor(userId) {

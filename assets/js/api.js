@@ -142,6 +142,7 @@
       join:   id => request(`/battles/${id}/accept`, { method: 'POST' }),
       acceptRequest: id => request(`/battles/${id}/accept-request`, { method: 'POST' }),
       rejectRequest: id => request(`/battles/${id}/reject-request`, { method: 'POST' }),
+      cancelRequest: id => request(`/battles/${id}/cancel-request`, { method: 'POST' }),
       cancel: id => request(`/battles/${id}/cancel`, { method: 'POST' }),
       reject: id => request(`/battles/${id}/reject`, { method: 'POST' }),
       setRoom: (id, roomCode) => request(`/battles/${id}/room`, { method: 'POST', body: { roomCode } }),

@@ -11,6 +11,29 @@
 
   const id = new URLSearchParams(location.search).get('id');
   let battle = null, claims = [], chosen = null, commission = 0.05;
+  /* Server-owned windows, filled from /api/config. The literals are only a
+     stand-in until that call returns — the server is always the authority. */
+  let cancelWindowMs = 60 * 1000, claimGraceMs = 10 * 60 * 1000;
+  let tickTimer = null;
+
+  const mmss = ms => {
+    const t = Math.max(0, Math.ceil(ms / 1000));
+    return t < 60 ? `${t}s` : `${Math.floor(t / 60)}m ${String(t % 60).padStart(2, '0')}s`;
+  };
+  /* Mirrors the server's cancelWindowOpen(): the window runs from the room
+     code going up, falling back to battle creation when there is no room code
+     yet. Treating a missing deadline as "open" offered a Cancel the server
+     then refused on battles that predate room_set_at. */
+  const cancelDeadline = () => {
+    if (!battle) return null;
+    if (battle.cancelDeadline) return battle.cancelDeadline;
+    const from = battle.roomSetAt || battle.createdAt;
+    return from ? from + cancelWindowMs : null;
+  };
+  const cancelOpen = () => {
+    const at = cancelDeadline();
+    return at == null ? false : Date.now() <= at;
+  };
 
   const STATUS = {
     open:      ['Waiting for an opponent to join',             'bg-gold/20 text-gold-deep'],
@@ -77,7 +100,12 @@
 
     // Result panel: only while running, only for the two players, only once
     const mine = myClaim();
-    $('#result-section').hidden = !(battle.status === 'running' && (isCreator() || isAcceptor()));
+    const inBattle = isCreator() || isAcceptor();
+    // `awaitingOpponent` is a battle parked in dispute purely because the other
+    // player has not reported yet — they must still be able to.
+    const canReport = (battle.status === 'running' || battle.awaitingOpponent) && inBattle;
+    $('#result-section').hidden = !canReport;
+    if (canReport) { paintTimers(); if (!tickTimer) startTicking(); }
     if (!$('#result-section').hidden && mine) {
       $('#result-options').innerHTML =
         `<p class="col-span-3 rounded-tile bg-surface-page px-3 py-3 text-center text-body-sm text-muted">
@@ -91,7 +119,7 @@
     $('#cancel-section').hidden = !(isCreator() && battle.status === 'open');
     $('#reject-section').hidden = !(isCreator() && battle.status === 'waiting');
 
-    $('#settled-section').hidden = !settled && battle.status !== 'disputed';
+    $('#settled-section').hidden = !settled && !(battle.status === 'disputed' && !battle.awaitingOpponent);
     if (settled || battle.status === 'disputed') {
       const iWon = battle.winnerId && me() && battle.winnerId === me().id;
       if (iWon && !window.__confettiFired) {
@@ -113,6 +141,82 @@
     }
   }
 
+  /* Two clocks live on this panel:
+       - the 1-minute window to back out after the room code goes up
+       - the 10-minute grace before a lone result is taken at face value
+     Both run off absolute server instants, so a skewed device clock only
+     shifts the display, never the server's decision. */
+  function paintTimers() {
+    const el = $('#result-timer');
+    if (!el || !battle) return;
+
+    const cancelBtn = $('[data-result="cancel"]');
+    const open = cancelOpen();
+    if (cancelBtn) {
+      cancelBtn.disabled = !open;
+      cancelBtn.classList.toggle('opacity-40', !open);
+      cancelBtn.classList.toggle('pointer-events-none', !open);
+      cancelBtn.title = open ? '' : 'The cancel window has closed';
+      // Clear a stale selection so Submit cannot post a now-invalid cancel.
+      if (!open && chosen === 'cancel') {
+        chosen = null;
+        cancelBtn.classList.remove('!border-brand', '!text-brand', 'bg-brand/5');
+        $('#cancel-wrap').hidden = true;
+        $('#submit-result').disabled = true;
+      }
+    }
+
+    const parts = [];
+    const deadline = cancelDeadline();
+    if (deadline != null) {
+      parts.push(open
+        ? `You can still cancel for ${mmss(deadline - Date.now())}.`
+        : 'The cancel window has closed — play the match and report the result.');
+    }
+    if (battle.awaitingOpponent && battle.autoSettleAt) {
+      const left = battle.autoSettleAt - Date.now();
+      parts.push(myClaim()
+        ? (left > 0
+            ? `Waiting for your opponent — your result stands in ${mmss(left)} if they do not report.`
+            : 'Settling now on your report…')
+        : (left > 0
+            ? `Your opponent has reported. Submit your result within ${mmss(left)} or theirs stands.`
+            : 'Settling now on your opponent’s report…'));
+    }
+    el.textContent = parts.join(' ');
+    el.hidden = parts.length === 0;
+  }
+
+  function startTicking() {
+    clearInterval(tickTimer);
+    let settleCheckAt = 0;            // next allowed refetch, epoch ms
+    tickTimer = setInterval(() => {
+      if (!battle) return;
+
+      // Nothing left to count down once the battle is over.
+      if (!(battle.status === 'running' || battle.awaitingOpponent)) {
+        clearInterval(tickTimer);
+        tickTimer = null;
+        return;
+      }
+
+      const wasOpen = cancelOpen();
+      paintTimers();
+      if (wasOpen && !cancelOpen()) toast('Cancel window closed', 'info');
+
+      /* The sweeper settles on its own schedule, so poll for the result at
+         its cadence rather than every tick — a 1s refetch produced dozens of
+         redundant round trips per settlement and never stopped if the sweeper
+         was stalled. */
+      const now = Date.now();
+      if (battle.awaitingOpponent && battle.autoSettleAt
+          && now > battle.autoSettleAt + 2000 && now >= settleCheckAt) {
+        settleCheckAt = now + 15000;
+        load();
+      }
+    }, 1000);
+  }
+
   async function load() {
     try {
       const data = await Api.battles.get(id);
@@ -125,11 +229,21 @@
 
   K.ready.then(async () => {
     if (!id) { $('#battle-missing').hidden = false; return; }
-    try { commission = (await Api.config()).commission; } catch {}
+    try {
+      const conf = await Api.config();
+      /* Take a value only when the server actually sent a usable number. A
+         bare assignment would replace a working default with undefined and
+         put NaN on screen; `> 0` would discard a deliberate zero window. */
+      const num = (v, fallback) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback);
+      commission = num(conf.commission, commission);
+      cancelWindowMs = num(conf.cancelWindowMs, cancelWindowMs);
+      claimGraceMs = num(conf.claimGraceMs, claimGraceMs);
+    } catch {}
 
     await load();
     if (!battle) return;
 
+    startTicking();
     K.watchBattle(id);
 
     if (window.KhelbroPush && (isCreator() || isAcceptor())) {
@@ -146,7 +260,7 @@
       else if (wasStatus !== b.status) toast('Battle updated: ' + b.status, 'info');
       K.refresh().then(K.paint);                // balances may have moved
     });
-    window.addEventListener('beforeunload', () => K.leaveBattle(id));
+    window.addEventListener('beforeunload', () => { clearInterval(tickTimer); K.leaveBattle(id); });
 
     // Accept / Reject request buttons for host
     if ($('#accept-request-btn')) {
@@ -170,7 +284,7 @@
     if ($('#cancel-my-request-btn')) {
       $('#cancel-my-request-btn').addEventListener('click', e => busy(e.currentTarget, 'Cancelling', async () => {
         try {
-          await Api.request(`/battles/${id}/cancel-request`, { method: 'POST' });
+          await Api.battles.cancelRequest(id);
           toast('Join request withdrawn', 'info');
           location.href = 'battles.html?mode=' + (battle ? battle.mode : 'lite');
         } catch (err) { toast(err.message, 'error'); }
@@ -199,7 +313,7 @@
     $('#copy-room').addEventListener('click', () => copy($('#room-code').textContent, 'Room code copied'));
 
     $('#result-options').addEventListener('click', e => {
-      const btn = e.target.closest('[data-result]'); if (!btn) return;
+      const btn = e.target.closest('[data-result]'); if (!btn || btn.disabled) return;
       chosen = btn.dataset.result;
       $$('[data-result]').forEach(b => {
         const on = b === btn;
@@ -214,6 +328,11 @@
 
     $('#submit-result').addEventListener('click', async () => {
       if (!chosen) return;
+      if (chosen === 'cancel' && !cancelOpen()) {
+        toast('The cancel window closed. Report won or lost instead.', 'error');
+        paintTimers();
+        return;
+      }
       const proofFile = $('#proof').files[0];
       if (chosen === 'won' && !proofFile) { toast('Upload screenshot.', 'error'); return; }
       const btn = $('#submit-result');
@@ -230,7 +349,8 @@
           proof: proofUrl,
           reason: chosen === 'cancel' ? $('#cancel-reason').value : undefined,
         });
-        toast(res.state === 'pending' ? 'Reported — waiting for your opponent'
+        toast(res.state === 'pending' || res.state === 'awaiting-opponent'
+              ? `Reported — your opponent has ${mmss(claimGraceMs)} to confirm`
             : res.state === 'disputed' ? 'Results conflict — sent for review'
             : 'Result submitted', res.state === 'disputed' ? 'error' : 'success');
         chosen = null;

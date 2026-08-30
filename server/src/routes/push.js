@@ -1,10 +1,11 @@
 /* Push subscription management. */
 import express from 'express';
+import { SafeRouter } from '../lib/safe-router.js';
 import { z } from 'zod';
 import { requireAuth } from '../lib/auth.js';
 import { publicKey, saveSubscription, removeSubscription, sendToUser, pushEnabled } from '../lib/push.js';
 
-const router = express.Router();
+const router = SafeRouter();
 
 /* GET /api/push/key — the VAPID public key the browser needs to subscribe. */
 router.get('/key', (_req, res) => res.json({ enabled: pushEnabled, publicKey: publicKey() }));

@@ -2,7 +2,7 @@
    Payment methods — admin manages up to N UPI IDs + QR codes;
    players are spread across the active ones.
    ============================================================ */
-import { Router } from 'express';
+import { SafeRouter } from '../lib/safe-router.js';
 import { z } from 'zod';
 import multer from 'multer';
 import crypto from 'node:crypto';
@@ -37,7 +37,7 @@ export async function methodForUser(userId) {
 }
 
 /* ---------- player: which UPI/QR do I pay to? ---------- */
-export const userRouter = Router();
+export const userRouter = SafeRouter();
 userRouter.get('/deposit-method', requireAuth, async (req, res) => {
   const m = await methodForUser(req.user.id);
   if (!m) {
@@ -49,7 +49,7 @@ userRouter.get('/deposit-method', requireAuth, async (req, res) => {
 });
 
 /* ---------- admin: manage methods ---------- */
-export const adminRouter = Router();
+export const adminRouter = SafeRouter();
 
 /* GET /admin/payment-methods — each with total collected + request count. */
 adminRouter.get('/payment-methods', async (_req, res) => {

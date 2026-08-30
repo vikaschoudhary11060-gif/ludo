@@ -1,10 +1,11 @@
 /* Support messages (MongoDB). */
 import express from 'express';
+import { SafeRouter } from '../lib/safe-router.js';
 import { z } from 'zod';
 import { col, nextId, now } from '../lib/db.js';
 import { optionalAuth, requireAuth } from '../lib/auth.js';
 
-const router = express.Router();
+const router = SafeRouter();
 
 router.post('/', optionalAuth, async (req, res) => {
   const schema = z.object({

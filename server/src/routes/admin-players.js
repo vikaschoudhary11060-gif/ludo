@@ -1,11 +1,11 @@
 /* Admin — players, money reporting, fraud & risk (MongoDB). */
-import { Router } from 'express';
+import { SafeRouter } from '../lib/safe-router.js';
 import { z } from 'zod';
 import multer from 'multer';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { col, nextId, now, audit } from '../lib/db.js';
+import { col, nextId, now, audit, notify, withTransaction } from '../lib/db.js';
 import { requireAdmin } from '../lib/admin-auth.js';
 
 const UPLOAD_ROOT = path.resolve(process.env.UPLOAD_DIR || './data/uploads');
@@ -20,7 +20,7 @@ const qrUpload = multer({
   fileFilter: (_r, f, cb) => cb(null, ['image/png', 'image/jpeg', 'image/webp'].includes(f.mimetype)),
 }).single('file');
 
-const router = Router();
+const router = SafeRouter();
 const RANGES = { '1d': 864e5, '7d': 7 * 864e5, '30d': 30 * 864e5, all: null };
 const since = req => { const s = RANGES[req.query.range]; return s ? Date.now() - s : 0; };
 
@@ -121,25 +121,61 @@ router.get('/players/:id', async (req, res) => {
   });
 });
 
+/* POST /admin/players/:id/adjust
+   mode 'adjust' (default) moves a bucket by ±amount.
+   mode 'set' writes an exact new balance — an admin editing a player's money
+   directly — and records the difference as the transaction, so the ledger
+   still reconciles against the wallet. */
 router.post('/players/:id/adjust', requireAdmin('admin'), async (req, res) => {
   const parsed = z.object({
-    amount: z.number().int().refine(n => n !== 0, 'Non-zero amount required.'),
+    amount: z.number().int(),
     bucket: z.enum(['deposit', 'winnings', 'referral']).default('deposit'),
+    mode: z.enum(['adjust', 'set']).default('adjust'),
     reason: z.string().trim().min(3).max(200),
   }).safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const { amount, bucket, reason } = parsed.data;
+  const { amount, bucket, mode, reason } = parsed.data;
   const id = Number(req.params.id);
-  const w = await col('wallets').findOne({ user_id: id });
-  if (!w) return res.status(404).json({ error: 'Player not found.' });
-  if (amount < 0 && w[bucket] + amount < 0) return res.status(400).json({ error: `Not enough in ${bucket} to deduct that.` });
 
-  await col('wallets').updateOne({ user_id: id }, { $inc: { [bucket]: amount } });
-  await col('transactions').insertOne({ id: await nextId('transactions'), user_id: id,
-    type: amount > 0 ? 'credit' : 'debit', bucket, amount: Math.abs(amount),
-    note: `Admin adjust: ${reason}`, status: 'success', ref_id: null, created_at: now() });
-  await audit(req.admin, 'wallet.adjust', { targetType: 'user', targetId: String(id), detail: { amount, bucket, reason }, ip: req.clientIp });
-  res.json({ ok: true, wallet: await col('wallets').findOne({ user_id: id }, { projection: { _id: 0, deposit: 1, winnings: 1, referral: 1 } }) });
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid player id.' });
+  if (mode === 'set' && amount < 0) return res.status(400).json({ error: 'A balance cannot be negative.' });
+  if (mode === 'adjust' && amount === 0) return res.status(400).json({ error: 'Enter a non-zero amount.' });
+
+  const user = await col('users').findOne({ id }, { projection: { id: 1 } });
+  if (!user) return res.status(404).json({ error: 'Player not found.' });
+
+  const w = (await col('wallets').findOne({ user_id: id })) || { deposit: 0, winnings: 0, referral: 0 };
+  const current = w[bucket] || 0;
+  const delta = mode === 'set' ? amount - current : amount;
+
+  if (delta === 0) {
+    return res.json({ ok: true, unchanged: true,
+      wallet: { deposit: w.deposit || 0, winnings: w.winnings || 0, referral: w.referral || 0 } });
+  }
+  if (current + delta < 0) {
+    return res.status(400).json({ error: `That would take ${bucket} below zero (currently ₹${current}).` });
+  }
+
+  await withTransaction(async session => {
+    await col('wallets').updateOne({ user_id: id },
+      { $inc: { [bucket]: delta }, $setOnInsert: { user_id: id } }, { upsert: true, session });
+    await col('transactions').insertOne({
+      id: await nextId('transactions'), user_id: id,
+      type: delta > 0 ? 'credit' : 'debit', bucket, amount: Math.abs(delta),
+      note: mode === 'set' ? `Admin set ${bucket} to ₹${amount}: ${reason}` : `Admin adjust: ${reason}`,
+      status: 'success', ref_id: null, created_at: now(),
+    }, { session });
+  });
+
+  await notify(id, 'Wallet updated',
+    delta > 0 ? `₹${Math.abs(delta)} was added to your ${bucket} balance.`
+              : `₹${Math.abs(delta)} was deducted from your ${bucket} balance.`);
+  await audit(req.admin, 'wallet.adjust', { targetType: 'user', targetId: String(id),
+    detail: { mode, bucket, requested: amount, delta, from: current, to: current + delta, reason }, ip: req.clientIp });
+
+  const after = await col('wallets').findOne({ user_id: id },
+    { projection: { _id: 0, deposit: 1, winnings: 1, referral: 1 } });
+  res.json({ ok: true, from: current, to: current + delta, delta, wallet: after });
 });
 
 router.post('/players/:id/logout', requireAdmin('admin'), async (req, res) => {

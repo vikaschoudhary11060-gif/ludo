@@ -135,16 +135,39 @@
 
   /* ---------------- realtime ---------------- */
   let socket = null;
+  let awaitingIo = false;
   const listeners = new Map();      // event -> Set(handler)
+  /* Battles this page wants live updates for. Socket.IO rooms live on the
+     server, so they are lost whenever the socket is replaced — and with
+     socket.io.js loading async the socket often does not exist yet at the
+     moment a page asks to watch. Re-sending this set on every connect covers
+     both the late first load and every later reconnect. */
+  const watched = new Set();
+
+  const apiOrigin = () => window.KHELBRO_API || location.origin;
 
   function connect() {
-    if (socket || typeof window.io !== 'function') return socket;
-    socket = window.io(window.KHELBRO_API || 'http://localhost:4000', {
+    if (socket) return socket;
+    /* socket.io.js is loaded async from the API host so a sleeping backend can
+       never hold up the first paint. It may therefore land after boot — wire up
+       the moment it arrives rather than dropping realtime for the whole page. */
+    if (typeof window.io !== 'function') {
+      const tag = document.querySelector('script[data-socket-io]');
+      if (tag && !awaitingIo) {
+        awaitingIo = true;
+        tag.addEventListener('load', () => { awaitingIo = false; connect(); }, { once: true });
+      }
+      return null;
+    }
+    socket = window.io(apiOrigin(), {
       auth: { token: window.Api ? Api.token : null },
       transports: ['websocket', 'polling'],
       reconnectionDelay: 800,
     });
-    socket.on('connect',    () => { state.online = true;  setOnline(true); });
+    socket.on('connect',    () => {
+      state.online = true; setOnline(true);
+      watched.forEach(id => socket.emit('battle:watch', { id }));
+    });
     socket.on('disconnect', () => { state.online = false; setOnline(false); });
     socket.on('connect_error', () => { state.online = false; setOnline(false); });
     // fan every server event out to page subscribers
@@ -160,8 +183,16 @@
     return () => listeners.get(event).delete(handler);
   }
 
-  function watchBattle(id) { connect(); socket && socket.emit('battle:watch', { id }); }
-  function leaveBattle(id) { socket && socket.emit('battle:leave', { id }); }
+  function watchBattle(id) {
+    watched.add(id);
+    connect();
+    // If the socket is not up yet the 'connect' handler replays the set.
+    if (socket && socket.connected) socket.emit('battle:watch', { id });
+  }
+  function leaveBattle(id) {
+    watched.delete(id);
+    if (socket && socket.connected) socket.emit('battle:leave', { id });
+  }
 
   /* A small dot in the header so the user can see the live link. */
   function setOnline(up) {

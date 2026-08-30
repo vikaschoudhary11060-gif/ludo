@@ -11,21 +11,35 @@
    ============================================================ */
 import { MongoClient } from 'mongodb';
 
-const URI = (process.env.MONGO_URI || process.env.MONGODB_URI || process.env.DATABASE_URL || '').trim();
-if (!URI) {
-  console.error('❌ Missing MongoDB connection string!');
-  console.error('Please set MONGO_URI in your environment variables.');
-  console.error('Available env variables:', Object.keys(process.env).filter(k => !k.startsWith('npm_') && !k.startsWith('LESS')));
-  throw new Error('MONGO_URI is not set. Please add MONGO_URI to your environment variables on Render.');
-}
+const readUri = () =>
+  (process.env.MONGO_URI || process.env.MONGODB_URI || process.env.DATABASE_URL || '').trim();
 
-const client = new MongoClient(URI, { maxPoolSize: 50 });
+/* The connection string is checked when we actually connect, not at import.
+   Throwing during module evaluation made every module that transitively
+   imports the data layer impossible to load at all — including from tests
+   that never touch the database. */
+let client = null;
 let database = null;
+
+function getClient() {
+  if (client) return client;
+  const uri = readUri();
+  if (!uri) {
+    console.error('❌ Missing MongoDB connection string!');
+    console.error('Please set MONGO_URI in your environment variables.');
+    console.error('Available env variables:',
+      Object.keys(process.env).filter(k => !k.startsWith('npm_') && !k.startsWith('LESS')));
+    throw new Error('MONGO_URI is not set. Please add MONGO_URI to your environment variables on Render.');
+  }
+  client = new MongoClient(uri, { maxPoolSize: Number(process.env.MONGO_POOL_SIZE) || 50 });
+  return client;
+}
 
 export async function connect() {
   if (database) return database;
-  await client.connect();
-  database = client.db('khelbro');
+  const c = getClient();
+  await c.connect();
+  database = c.db('khelbro');
   await ensureIndexes();
   return database;
 }
@@ -50,7 +64,7 @@ export async function nextId(name) {
 
 /** A session for multi-document transactions (the wallet needs these). */
 export function startSession() {
-  return client.startSession();
+  return getClient().startSession();
 }
 
 /** Run a function inside a transaction, retrying on transient errors. */
@@ -105,6 +119,7 @@ async function ensureIndexes() {
 }
 
 export async function close() {
-  await client.close();
+  if (client) await client.close();
+  client = null;
   database = null;
 }

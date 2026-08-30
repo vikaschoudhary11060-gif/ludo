@@ -255,6 +255,7 @@ SHELL = '''<!doctype html>
 {jsonld}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="{api}" crossorigin>
 <link rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Saira+Semi+Condensed:wght@600;700&display=swap">
 <link rel="stylesheet" href="assets/css/app.css">
@@ -303,7 +304,7 @@ var l=localStorage.getItem('khelbro.lang');if(l)document.documentElement.lang=l;
   </aside>
 </div>
 
-<script src="{api}/socket.io/socket.io.js" defer></script>
+<script src="{api}/socket.io/socket.io.js" async data-socket-io></script>
 <script src="assets/js/pwa.js" defer></script>
 <script src="assets/js/push.js" defer></script>
 <script src="assets/js/i18n.js" defer></script>

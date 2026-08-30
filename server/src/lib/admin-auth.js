@@ -1,8 +1,10 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { col, nextId, now } from './db.js';
+import { JWT_SECRET } from './auth.js';
 
-const SECRET = (process.env.JWT_SECRET || 'dev-only-insecure-secret') + ':admin';
+// Derived from the validated app secret, so admin tokens inherit its checks.
+const SECRET = JWT_SECRET + ':admin';
 const EXPIRES = process.env.ADMIN_JWT_EXPIRES || '12h';
 
 export const ROLES = ['owner', 'admin', 'viewer'];
@@ -35,12 +37,18 @@ export async function verifyLogin(username, password) {
 
 export const signAdmin = admin => jwt.sign({ aid: admin.id, role: admin.role }, SECRET, { expiresIn: EXPIRES });
 
+/** Verify an admin token. The one place that knows the admin secret, so HTTP
+    and socket admin auth can never diverge. */
+export function verifyAdminToken(token) {
+  if (!token) return null;
+  try { return jwt.verify(token, SECRET); } catch { return null; }
+}
+
 export function requireAdmin(min = 'viewer') {
   return async (req, res, next) => {
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-    let payload = null;
-    try { payload = token ? jwt.verify(token, SECRET) : null; } catch { payload = null; }
+    const payload = verifyAdminToken(token);
     if (!payload) return res.status(401).json({ error: 'Sign in to continue.' });
     const admin = await col('admin_users').findOne({ id: payload.aid });
     if (!admin || !admin.active) return res.status(401).json({ error: 'Account is no longer active.' });

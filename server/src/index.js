@@ -23,7 +23,9 @@ import chatRoutes from './routes/chat.js';
 import referralRoutes from './routes/referrals.js';
 import { userRouter as paymentUserRoutes } from './routes/payments.js';
 import { attachRealtime } from './realtime.js';
-import { MODES, DEPOSIT, WITHDRAW } from './lib/config.js';
+import { startSettlementSweeper } from './lib/settle-sweeper.js';
+import { MODES, DEPOSIT, WITHDRAW, BONUS_PER, BONUS_AMOUNT,
+         CANCEL_WINDOW_MS, CLAIM_GRACE_MS, IS_DEV } from './lib/config.js';
 import { getSettings, connect, ensureSeed } from './lib/db.js';
 
 const app = express();
@@ -59,6 +61,10 @@ app.get('/api/config', async (_req, res) => {
     commission: s.commission, referralRate: s.referral_rate, battleLimit: s.battle_limit,
     withdrawOpen: !!s.withdraw_open, depositOpen: !!s.deposit_open,
     maintenance: !!s.maintenance, notice: s.notice, upiId: s.upi_id, qrImage: s.qr_image,
+    bonus: { per: BONUS_PER, amount: BONUS_AMOUNT },
+    // The simulated top-up only exists off production; the UI hides it otherwise.
+    simulatedDeposit: IS_DEV,
+    cancelWindowMs: CANCEL_WINDOW_MS, claimGraceMs: CLAIM_GRACE_MS,
   });
 });
 
@@ -82,9 +88,31 @@ app.use('/uploads', express.static(UPLOAD_ROOT, { maxAge: '7d', index: false }))
 
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Unknown endpoint.' }));
 
+/* Every route is a SafeRouter, so async rejections arrive here instead of
+   hanging the request. Translate the failures we can name, log the rest. */
 // eslint-disable-next-line no-unused-vars
-app.use((err, _req, res, _next) => {
-  console.error('[error]', err);
+app.use((err, req, res, _next) => {
+  if (res.headersSent) return;
+
+  // Body parser / payload problems are the caller's, not ours.
+  if (err?.type === 'entity.too.large')
+    return res.status(413).json({ error: 'That request is too large.' });
+  if (err instanceof SyntaxError && 'body' in err)
+    return res.status(400).json({ error: 'That request body is not valid JSON.' });
+  if (err?.name === 'ZodError')
+    return res.status(400).json({ error: err.issues?.[0]?.message || 'Check the values you sent.' });
+  if (err?.code === 'LIMIT_FILE_SIZE')
+    return res.status(413).json({ error: 'That file is too large.' });
+
+  // Mongo duplicate key — a unique index caught a repeat.
+  if (err?.code === 11000)
+    return res.status(409).json({ error: 'That record already exists.' });
+
+  // Transient replica-set / network blips are worth retrying client-side.
+  if (err?.hasErrorLabel?.('TransientTransactionError') || err?.name === 'MongoNetworkError')
+    return res.status(503).json({ error: 'The service is busy. Please try again.' });
+
+  console.error('[error]', req.method, req.originalUrl, '-', err?.stack || err);
   res.status(500).json({ error: 'Something went wrong on our side.' });
 });
 
@@ -92,9 +120,34 @@ const io = new SocketServer(server, { cors: { origin: checkOrigin, credentials: 
 app.set('io', io);
 attachRealtime(io, app);
 
+/* Route errors are handled by SafeRouter, so a rejection reaching here came
+   from a timer, a socket handler or the sweeper. Log it and keep serving —
+   one stray rejection should not disconnect every player mid-battle. */
+process.on('unhandledRejection', reason => {
+  console.error('[unhandledRejection]', reason?.stack || reason);
+});
+
+/* An uncaught exception leaves the process in an undefined state, so carrying
+   on would mean serving money operations from a half-broken instance. Log it,
+   close the listener so in-flight requests finish, and exit non-zero for the
+   process manager to restart. */
+let shuttingDown = false;
+process.on('uncaughtException', err => {
+  console.error('[uncaughtException]', err?.stack || err);
+  /* Set the code up front: installing this handler suppresses Node's default
+     exit-1, so a loop that simply drains would otherwise report success. */
+  process.exitCode = 1;
+  if (shuttingDown) return;
+  shuttingDown = true;
+  server.close(() => process.exit(1));
+  // Do not let a hung close keep a broken instance alive.
+  setTimeout(() => process.exit(1), 5000).unref();
+});
+
 const PORT = Number(process.env.PORT) || 4000;
 await connect();
 await ensureSeed();
+startSettlementSweeper(app);
 server.listen(PORT, () => {
   console.log(`Khelbro API listening on http://localhost:${PORT}`);
   console.log(`CORS origins: ${ORIGINS.join(', ')} (and all *.vercel.app)`);

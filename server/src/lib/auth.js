@@ -1,7 +1,41 @@
 import jwt from 'jsonwebtoken';
 import { col, publicUser } from './db.js';
 
-const SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
+const DEV_SECRET = 'dev-only-insecure-secret';
+
+/* Values that appear in the repository, so they are public knowledge and
+   cannot authenticate anything. */
+const PUBLIC_SECRETS = new Set([
+  DEV_SECRET,
+  'change-me-to-a-long-random-string',
+  'change-me',
+  'secret',
+]);
+
+/* This fallback is published in the repository, so a deployment running on it
+   lets anyone mint a token for any account. Refuse to start rather than serve
+   forgeable sessions; only an explicit NODE_ENV=development may use it. */
+const SECRET = (() => {
+  const configured = (process.env.JWT_SECRET || '').trim();
+  if (configured && !PUBLIC_SECRETS.has(configured)) {
+    // Short secrets are weak but private — warn rather than refuse to boot,
+    // so hardening this cannot take a working deployment offline.
+    if (configured.length < 32) console.warn(`[auth] JWT_SECRET is only ${configured.length} characters — use at least 32.`);
+    return configured;
+  }
+  if (process.env.NODE_ENV === 'development') {
+    console.warn('[auth] JWT_SECRET is unset or public — using the insecure development secret.');
+    return DEV_SECRET;
+  }
+  throw new Error(
+    'JWT_SECRET is missing, too short, or set to a value published in this repository. Generate one with `node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"` ' +
+    'and set it in the environment before starting the server.');
+})();
+
+/* The single validated signing secret. Other modules derive from this rather
+   than reading JWT_SECRET again, so the checks above cannot be bypassed. */
+export const JWT_SECRET = SECRET;
+
 const EXPIRES = process.env.JWT_EXPIRES || '7d';
 
 export const sign = (userId, epoch = 0) => jwt.sign({ uid: userId, se: epoch }, SECRET, { expiresIn: EXPIRES });

@@ -11,7 +11,20 @@
      battle:leave  { id }
 */
 import { verify } from './lib/auth.js';
+import { verifyAdminToken } from './lib/admin-auth.js';
 import { col } from './lib/db.js';
+
+/* An admin socket must prove it holds a real admin token, not merely claim
+   to. The verification is admin-auth's own, so socket and HTTP admin auth can
+   never drift apart — and it inherits that module's refusal of a published
+   secret rather than re-deriving one here. */
+async function adminFromToken(token) {
+  if (!token) return null;
+  const payload = verifyAdminToken(token);
+  if (!payload) return null;
+  const admin = await col('admin_users').findOne({ id: payload.aid }, { projection: { id: 1, active: 1 } });
+  return admin && admin.active ? admin : null;
+}
 
 export function attachRealtime(io, app) {
   // How many agent sockets are connected — surfaced to players as "we're online".
@@ -34,8 +47,16 @@ export function attachRealtime(io, app) {
   io.on('connection', socket => {
     socket.join('lobby');
 
-    socket.on('battle:watch', ({ id } = {}) => {
+    socket.on('battle:watch', async ({ id } = {}) => {
       if (typeof id !== 'string' || !/^[a-f0-9]{12}$/.test(id)) return;
+      /* battle:updated carries the room code, which is what gets you into the
+         actual Ludo match — so the room is for its two players only. */
+      const uid = socket.data.user?.id;
+      if (uid == null) return;
+      const b = await col('battles').findOne({ id },
+        { projection: { _id: 0, creator_id: 1, acceptor_id: 1 } });
+      if (!b || (b.creator_id !== uid && b.acceptor_id !== uid)) return;
+
       socket.join(`battle:${id}`);
       const size = io.sockets.adapter.rooms.get(`battle:${id}`)?.size ?? 0;
       io.to(`battle:${id}`).emit('presence', { id, watchers: size });
@@ -49,7 +70,12 @@ export function attachRealtime(io, app) {
     /* ---- live chat ---- */
 
     // Agents identify themselves so players can see an online indicator.
-    socket.on('chat:admin-join', () => {
+    socket.on('chat:admin-join', async () => {
+      if (socket.data.isAdmin) return;                       // already counted
+      // Without this check any visitor could join the `admins` room and read
+      // every player's support conversation.
+      const admin = await adminFromToken(socket.handshake.auth?.adminToken);
+      if (!admin) return;
       socket.data.isAdmin = true;
       socket.join('admins');
       adminSockets++;

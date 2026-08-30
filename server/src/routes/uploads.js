@@ -3,6 +3,7 @@
    Stored on local disk under ./data/uploads. Swap the storage engine
    for S3/R2 in production; nothing else needs to change. */
 import express from 'express';
+import { SafeRouter } from '../lib/safe-router.js';
 import multer from 'multer';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -12,7 +13,7 @@ import { col, now, nextId, notify } from '../lib/db.js';
 import { parseOfflineEkyc, mobileMatches, certAvailable } from '../lib/aadhaar-offline.js';
 import { requireAuth } from '../lib/auth.js';
 
-const router = express.Router();
+const router = SafeRouter();
 
 const ROOT = path.resolve(process.env.UPLOAD_DIR || './data/uploads');
 fs.mkdirSync(ROOT, { recursive: true });

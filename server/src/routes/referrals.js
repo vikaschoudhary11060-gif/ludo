@@ -2,11 +2,12 @@
    Referrals API — lookup, stats & history (MongoDB)
    ============================================================ */
 import express from 'express';
+import { SafeRouter } from '../lib/safe-router.js';
 import rateLimit from 'express-rate-limit';
 import { col, getSettings } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
 
-const router = express.Router();
+const router = SafeRouter();
 
 const lookupLimiter = rateLimit({
   windowMs: 60_000,

@@ -9,6 +9,7 @@
    a transaction (the wallet paths do).
    ============================================================ */
 import { col, nextId, withTransaction, connect } from './mongo.js';
+import { SETTINGS_DEFAULTS } from './config.js';
 
 export { col, nextId, withTransaction, connect };
 export const now = () => Date.now();
@@ -17,28 +18,48 @@ export const now = () => Date.now();
 export async function ensureSeed() {
   const existing = await col('settings').findOne({ id: 1 });
   if (!existing) {
-    await col('settings').insertOne({
-      id: 1, withdraw_open: 1, deposit_open: 1, maintenance: 0, notice: null,
-      commission: 0.05, battle_limit: 2, referral_rate: 0.01, upi_id: 'khelbro@upi', qr_image: null,
-    });
-  } else if (existing.referral_rate === 0.02) {
+    await col('settings').insertOne({ id: 1, ...SETTINGS_DEFAULTS });
+    return;
+  }
+  if (existing.referral_rate === 0.02) {
     await col('settings').updateOne({ id: 1 }, { $set: { referral_rate: 0.01 } });
   }
+  // Backfill any key a older settings document predates, so routes never
+  // read undefined for a number they are about to multiply.
+  const missing = Object.fromEntries(
+    Object.entries(SETTINGS_DEFAULTS).filter(([k]) => existing[k] === undefined));
+  if (Object.keys(missing).length) await col('settings').updateOne({ id: 1 }, { $set: missing });
 }
 
+/** Settings with every key guaranteed present and numeric fields sane. */
 export async function getSettings() {
-  return (await col('settings').findOne({ id: 1 })) || {};
+  const row = (await col('settings').findOne({ id: 1 })) || {};
+  const s = { ...SETTINGS_DEFAULTS, ...row };
+  const num = (v, fallback) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+  s.commission    = num(s.commission,    SETTINGS_DEFAULTS.commission);
+  s.referral_rate = num(s.referral_rate, SETTINGS_DEFAULTS.referral_rate);
+  s.battle_limit  = num(s.battle_limit,  SETTINGS_DEFAULTS.battle_limit);
+  return s;
 }
 
 /* ---------- wallet ---------- */
 
-export async function getWallet(userId) {
-  return await col('wallets').findOne({ user_id: userId }, { projection: { _id: 0, deposit: 1, winnings: 1, referral: 1 } });
+/** A user's wallet, creating the row if it somehow went missing.
+    Callers read .deposit/.winnings directly, so this must never be null. */
+export async function getWallet(userId, session = null) {
+  const opts = { projection: { _id: 0, deposit: 1, winnings: 1, referral: 1 } };
+  if (session) opts.session = session;
+  const w = await col('wallets').findOne({ user_id: userId }, opts);
+  if (w) return { deposit: w.deposit || 0, winnings: w.winnings || 0, referral: w.referral || 0 };
+  await col('wallets').updateOne({ user_id: userId },
+    { $setOnInsert: { user_id: userId, deposit: 0, winnings: 0, referral: 0 } },
+    session ? { upsert: true, session } : { upsert: true });
+  return { deposit: 0, winnings: 0, referral: 0 };
 }
 
-export async function spendable(userId) {
-  const w = await getWallet(userId);
-  return w ? w.deposit + w.winnings : 0;
+export async function spendable(userId, session = null) {
+  const w = await getWallet(userId, session);
+  return w.deposit + w.winnings;
 }
 
 async function insertTx(entry, session) {
@@ -48,18 +69,45 @@ async function insertTx(entry, session) {
 
 /** Credit a bucket and log a transaction. */
 export async function credit(userId, bucket, amount, note, refId = null, status = 'success', session = null) {
-  await col('wallets').updateOne({ user_id: userId }, { $inc: { [bucket]: amount } }, session ? { session } : undefined);
+  if (!Number.isFinite(amount) || amount <= 0)
+    throw new Error(`credit() refused a non-positive amount (${amount}) for user ${userId}`);
+  if (!['deposit', 'winnings', 'referral'].includes(bucket))
+    throw new Error(`credit() refused an unknown bucket: ${bucket}`);
+  /* Create the wallet if it is somehow absent, so a credit is never lost.
+     Every bucket is seeded, because debit()'s `$gte` guards do not match a
+     field that is missing rather than zero. */
+  const seed = { user_id: userId };
+  for (const b of ['deposit', 'winnings', 'referral']) if (b !== bucket) seed[b] = 0;
+  await col('wallets').updateOne({ user_id: userId },
+    { $inc: { [bucket]: amount }, $setOnInsert: seed },
+    session ? { upsert: true, session } : { upsert: true });
   await insertTx({ user_id: userId, type: 'credit', bucket, amount, note, status, ref_id: refId }, session);
 }
 
-/** Spend deposit first, then winnings. Returns false if short. */
+/** Spend deposit first, then winnings. Returns false if short.
+
+    The balance guard is repeated in the update filter, so the deduction is
+    atomic even if two requests read the same balance: whichever lands second
+    matches nothing and is reported as short rather than going negative. */
 export async function debit(userId, amount, note, refId = null, session = null) {
-  const w = await col('wallets').findOne({ user_id: userId }, session ? { session } : undefined);
-  if (!w || w.deposit + w.winnings < amount) return false;
-  const fromDeposit = Math.min(w.deposit, amount);
+  if (!Number.isFinite(amount) || amount <= 0) return false;
+  const opts = session ? { session } : undefined;
+  const w = await col('wallets').findOne({ user_id: userId }, opts);
+  if (!w) return false;
+  const deposit = w.deposit || 0, winnings = w.winnings || 0;
+  if (deposit + winnings < amount) return false;
+
+  const fromDeposit = Math.min(deposit, amount);
   const fromWinnings = amount - fromDeposit;
-  await col('wallets').updateOne({ user_id: userId },
-    { $inc: { deposit: -fromDeposit, winnings: -fromWinnings } }, session ? { session } : undefined);
+  /* `$gte` does not match a missing field, so guard only the buckets this
+     debit actually draws from — a zero draw needs no guard. */
+  const filter = { user_id: userId };
+  if (fromDeposit > 0) filter.deposit = { $gte: fromDeposit };
+  if (fromWinnings > 0) filter.winnings = { $gte: fromWinnings };
+  const res = await col('wallets').updateOne(filter,
+    { $inc: { deposit: -fromDeposit, winnings: -fromWinnings } }, opts);
+  if (res.matchedCount === 0) return false;      // balance moved under us
+
   if (fromDeposit) await insertTx({ user_id: userId, type: 'debit', bucket: 'deposit', amount: fromDeposit, note, ref_id: refId }, session);
   if (fromWinnings) await insertTx({ user_id: userId, type: 'debit', bucket: 'winnings', amount: fromWinnings, note, ref_id: refId }, session);
   return true;

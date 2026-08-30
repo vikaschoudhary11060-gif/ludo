@@ -437,6 +437,7 @@
         </div>
         <div class="mt-4 flex flex-wrap gap-2" data-min-role="admin">
           <button class="btn btn-outline !min-h-[34px] !px-3 !text-meta" data-padjust="${p.id}">Adjust wallet</button>
+          <button class="btn btn-outline !min-h-[34px] !px-3 !text-meta" data-pset="${p.id}">Set balance</button>
           <button class="btn btn-outline !min-h-[34px] !px-3 !text-meta" data-plogout="${p.id}">Force logout</button>
           <button class="btn btn-outline !min-h-[34px] !px-3 !text-meta" data-pwatch="${p.id}" data-on="${d.watch?0:1}">${d.watch?'Unwatch':'Watch'}</button>
           <button class="btn btn-outline !min-h-[34px] !px-3 !text-meta !text-live" data-pban="${p.id}" data-on="${p.banned?0:1}">${p.banned?'Unban':'Ban'}</button>
@@ -576,9 +577,19 @@
 
   /* Socket.IO so agents see messages arrive without refreshing. */
   let socket = null;
+  let awaitingIo = false;
   function connectSocket() {
-    if (socket || typeof window.io !== 'function') return;
-    socket = window.io(window.KHELBRO_API || '', { transports: ['websocket', 'polling'] });
+    if (socket) return;
+    // socket.io.js loads async from the API host, so it may not be here yet.
+    if (typeof window.io !== 'function') {
+      const tag = document.querySelector('script[data-socket-io]');
+      if (tag && !awaitingIo) {
+        awaitingIo = true;
+        tag.addEventListener('load', () => { awaitingIo = false; connectSocket(); }, { once: true });
+      }
+      return;
+    }
+    socket = window.io(window.KHELBRO_API || '', { auth: { adminToken: TOKEN }, transports: ['websocket', 'polling'] });
     socket.on('connect', () => socket.emit('chat:admin-join'));
     socket.on('chat:message', ({ threadId, message }) => {
       if (threadId === openThread) renderMsg(message);
@@ -817,6 +828,54 @@
   }
 
   /* ---------------- events ---------------- */
+  /* Wallet editing. 'adjust' moves a bucket by ±amount; 'set' writes an exact
+     balance and the server records the difference, so the ledger still
+     reconciles. Current values are read back first so the admin is never
+     typing blind. */
+  async function editWallet(playerId, mode) {
+    let current = null;
+    try {
+      const d = await call('/admin/players/' + playerId);
+      current = d.wallet || null;
+    } catch (err) { toast(err.message, 'error'); return; }
+
+    const shown = current
+      ? `deposit ₹${current.deposit || 0} · winnings ₹${current.winnings || 0} · referral ₹${current.referral || 0}`
+      : 'balances unavailable';
+    const bucket = prompt(`Bucket: deposit / winnings / referral\n\nCurrent: ${shown}`, 'deposit');
+    if (!bucket) return;
+    if (!['deposit', 'winnings', 'referral'].includes(bucket.trim())) {
+      toast('Bucket must be deposit, winnings or referral', 'error'); return;
+    }
+    const key = bucket.trim();
+    const at = current ? (current[key] || 0) : 0;
+
+    const label = mode === 'set'
+      ? `New ${key} balance (currently ₹${at}):`
+      : `Amount to add to ${key} (negative to deduct, currently ₹${at}):`;
+    const raw = prompt(label, mode === 'set' ? String(at) : '');
+    if (raw === null) return;
+    const amount = Number(String(raw).trim());
+    if (!Number.isFinite(amount) || !Number.isInteger(amount)) { toast('Enter a whole number', 'error'); return; }
+    if (mode === 'set' && amount < 0) { toast('A balance cannot be negative', 'error'); return; }
+    if (mode === 'adjust' && amount === 0) { toast('Enter a non-zero amount', 'error'); return; }
+
+    const reason = prompt('Reason (required, min 3 chars):');
+    if (!reason || reason.trim().length < 3) { toast('A reason is required', 'error'); return; }
+
+    const preview = mode === 'set' ? `₹${at} → ₹${amount}` : `${amount > 0 ? '+' : ''}₹${amount} (→ ₹${at + amount})`;
+    if (!confirm(`Update ${key} for player #${playerId}?\n\n${preview}\n\nReason: ${reason.trim()}`)) return;
+
+    try {
+      const r = await call(`/admin/players/${playerId}/adjust`, {
+        method: 'POST',
+        body: JSON.stringify({ amount, bucket: key, mode, reason: reason.trim() }),
+      });
+      toast(r.unchanged ? 'Already at that balance' : `Wallet updated — ${key} is now ₹${r.to}`, 'success');
+      openPlayer(playerId);
+    } catch (err) { toast(err.message, 'error'); }
+  }
+
   document.addEventListener('click', async e => {
     const t = e.target;
 
@@ -930,16 +989,9 @@
     if (t.id === 'player-back') { $('#player-detail').hidden = true; $('#players').hidden = false; return; }
 
     const padj = t.closest('[data-padjust]');
-    if (padj) {
-      const amt = prompt('Amount (negative to deduct):'); if (amt === null) return;
-      const bucket = prompt('Bucket: deposit / winnings / referral', 'deposit'); if (!bucket) return;
-      const reason = prompt('Reason (required):'); if (!reason) return;
-      try { await call(`/admin/players/${padj.dataset.padjust}/adjust`,
-        { method: 'POST', body: JSON.stringify({ amount: Number(amt), bucket, reason }) });
-        toast('Wallet adjusted', 'success'); openPlayer(padj.dataset.padjust); }
-      catch (err) { toast(err.message, 'error'); }
-      return;
-    }
+    if (padj) return editWallet(padj.dataset.padjust, 'adjust');
+    const pset = t.closest('[data-pset]');
+    if (pset) return editWallet(pset.dataset.pset, 'set');
     const plog = t.closest('[data-plogout]');
     if (plog) {
       if (!confirm('Force-logout this player?')) return;

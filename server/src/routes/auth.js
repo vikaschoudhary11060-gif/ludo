@@ -1,16 +1,35 @@
 /* Auth — OTP request + verify (MongoDB). */
 import express from 'express';
+import { SafeRouter } from '../lib/safe-router.js';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { col, nextId, now, publicUser, notify } from '../lib/db.js';
+import { col, nextId, now, publicUser, notify, getWallet } from '../lib/db.js';
 import { sign, requireAuth } from '../lib/auth.js';
-import { OTP_TTL_MS, OTP_MAX_ATTEMPTS } from '../lib/config.js';
+import { OTP_TTL_MS, OTP_MAX_ATTEMPTS, IS_PROD } from '../lib/config.js';
 
-const router = express.Router();
+const router = SafeRouter();
+
+
+
+/* Returning the OTP to the caller turns "log in as anyone" into a single
+   request, so it is a development-only affordance and is ignored outright
+   in production no matter how the environment is configured. */
+const EXPOSE_OTP = process.env.EXPOSE_OTP === 'true' && !IS_PROD;
+if (process.env.EXPOSE_OTP === 'true' && IS_PROD) {
+  console.warn('[auth] EXPOSE_OTP=true ignored: refusing to return login codes in production.');
+}
+
+/* The cap is a brute-force control, so production keeps a strict ceiling
+   even when the env var says otherwise. */
+const OTP_MAX_PER_WINDOW = (() => {
+  const configured = Number(process.env.OTP_RATE_LIMIT);
+  if (!Number.isFinite(configured) || configured <= 0) return 5;
+  return IS_PROD ? Math.min(configured, 10) : configured;
+})();
 
 const otpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
-  max: Number(process.env.OTP_RATE_LIMIT) || 5,
+  max: OTP_MAX_PER_WINDOW,
   message: { error: 'Too many code requests. Try again in a few minutes.' },
 });
 
@@ -26,9 +45,10 @@ router.post('/request-otp', otpLimiter, async (req, res) => {
   const code = randomCode();
   await col('otps').updateOne({ phone },
     { $set: { phone, code, expires_at: now() + OTP_TTL_MS, attempts: 0 } }, { upsert: true });
-  console.log(`[otp] ${phone} -> ${code}`);   // replace with your SMS provider
+  // TODO: hand `code` to an SMS provider. Never log it in production.
+  if (!IS_PROD) console.log(`[otp] ${phone} -> ${code}`);
   res.json({ ok: true, expiresIn: Math.floor(OTP_TTL_MS / 1000),
-             ...(process.env.EXPOSE_OTP === 'true' ? { devCode: code } : {}) });
+             ...(EXPOSE_OTP ? { devCode: code } : {}) });
 });
 
 /* POST /api/auth/verify-otp */
@@ -98,13 +118,15 @@ router.post('/verify-otp', async (req, res) => {
 
 /* GET /api/auth/me */
 router.get('/me', requireAuth, async (req, res) => {
-  const wallet = await col('wallets').findOne({ user_id: req.user.id },
-    { projection: { _id: 0, deposit: 1, winnings: 1, referral: 1 } });
-  const played = await col('battles').countDocuments({
-    status: { $in: ['completed', 'cancelled'] },
-    $or: [{ creator_id: req.user.id }, { acceptor_id: req.user.id }],
-  });
-  const won = await col('battles').countDocuments({ winner_id: req.user.id });
+  // Every page load hits this, so pay one round trip rather than three.
+  const [wallet, played, won] = await Promise.all([
+    getWallet(req.user.id),        // creates the row if it is missing
+    col('battles').countDocuments({
+      status: { $in: ['completed', 'cancelled'] },
+      $or: [{ creator_id: req.user.id }, { acceptor_id: req.user.id }],
+    }),
+    col('battles').countDocuments({ winner_id: req.user.id }),
+  ]);
   res.json({ user: req.publicUser, wallet, stats: { played, won } });
 });
 

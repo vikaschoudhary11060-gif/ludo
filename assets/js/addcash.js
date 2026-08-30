@@ -4,9 +4,24 @@
   const K = window.Khelbro; const { $, $$, money, toast, copy } = K;
   const CHIPS = [100, 250, 500, 1000, 2500, 5000];
   let LIM = { min: 100, max: 10000 };
+  let BONUS = null;                       // { per, amount } from /api/config
   let activeQrImage = null;
 
+  /* The cashback rule lives on the server, so read it from /api/config
+     rather than restating it here where the two can drift apart. */
+  function paintBonus(amount) {
+    const note = $('#bonus-note');
+    if (!note) return;
+    if (!BONUS || !BONUS.per || !BONUS.amount) { note.hidden = true; return; }
+    const earned = Math.floor(Math.max(0, amount || 0) / BONUS.per) * BONUS.amount;
+    note.textContent = earned > 0
+      ? `Includes ${money(earned)} cashback — you will be credited ${money((amount || 0) + earned)}.`
+      : `Add ${money(BONUS.per)} or more to earn ${money(BONUS.amount)} cashback.`;
+    note.hidden = false;
+  }
+
   function paint(amount) {
+    paintBonus(amount);
     const qrWrap = $('#qr-wrap');
     const qrLimitNote = $('#qr-limit-note');
     if (activeQrImage) {
@@ -26,7 +41,7 @@
   K.ready.then(async () => {
     if (!K.requireSession()) return;
     let conf = {};
-    try { conf = await Api.config(); LIM = conf.deposit; } catch {}
+    try { conf = await Api.config(); LIM = conf.deposit; BONUS = conf.bonus || null; } catch {}
     // Each player is assigned one of the active UPI/QR accounts.
     try {
       const { method } = await Api.wallet.depositMethod();
@@ -48,18 +63,27 @@
       }
     } catch {}
 
-    // Route switch: instant vs pay-by-UPI
-    $$('[data-route]').forEach(btn => btn.addEventListener('click', () => {
-      $$('[data-route]').forEach(b => b.classList.toggle('is-active', b === btn));
-      const manual = btn.dataset.route === 'manual';
+    /* The "Instant" route is a local simulator with no payment behind it.
+       When the server has it switched off, drop the chip entirely and start
+       on the real UPI route rather than offering a button that 404s. */
+    const showRoute = route => {
+      $$('[data-route]').forEach(b => b.classList.toggle('is-active', b.dataset.route === route));
+      const manual = route === 'manual';
       $('#manual-route').hidden = !manual;
       $('#pay-btn').hidden = manual;
       $('#instant-note').hidden = manual;
-      if (manual) {
-        paint(Number($('#deposit').value) || 0);
-        renderRequests();
-      }
-    }));
+      if (manual) { paint(Number($('#deposit').value) || 0); renderRequests(); }
+    };
+
+    if (conf && conf.simulatedDeposit === false) {
+      const instantChip = $('[data-route="instant"]');
+      if (instantChip) instantChip.remove();
+      showRoute('manual');
+    }
+
+    // Route switch: instant vs pay-by-UPI
+    $$('[data-route]').forEach(btn =>
+      btn.addEventListener('click', () => showRoute(btn.dataset.route)));
 
     $('#copy-upi').addEventListener('click', () => copy($('#upi-id-value').textContent, 'UPI ID copied'));
 

@@ -2,12 +2,13 @@
   "name": "khelbro",
   "version": "1.0.0",
   "private": true,
-  "description": "Khelbro — Ludo gaming site",
+  "description": "Khelbro \u2014 Ludo gaming site",
   "scripts": {
     "dev": "tailwindcss -i ./src/input.css -o ./assets/css/app.css --watch",
     "build": "python3 build.py && tailwindcss -i ./src/input.css -o ./assets/css/app.css --minify",
     "pages": "python3 build.py",
-    "serve": "python3 -m http.server 5173"
+    "serve": "python3 -m http.server 5173",
+    "test": "node --experimental-test-module-mocks --test tests/*.test.mjs"
   },
   "devDependencies": {
     "tailwindcss": "^3.4.17"
