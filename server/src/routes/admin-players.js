@@ -7,17 +7,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { col, nextId, now, audit, notify, withTransaction } from '../lib/db.js';
 import { requireAdmin } from '../lib/admin-auth.js';
+import { memoryStorage, ALLOWED_TYPES, saveFile } from '../lib/storage.js';
 
-const UPLOAD_ROOT = path.resolve(process.env.UPLOAD_DIR || './data/uploads');
-fs.mkdirSync(UPLOAD_ROOT, { recursive: true });
 const qrUpload = multer({
-  storage: multer.diskStorage({
-    destination: (_r, _f, cb) => cb(null, UPLOAD_ROOT),
-    filename: (_r, file, cb) => cb(null, 'qr-' + Date.now() + '-' + crypto.randomBytes(3).toString('hex') +
-      ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' }[file.mimetype] || '.png')),
-  }),
+  storage: memoryStorage,
   limits: { fileSize: 3 * 1024 * 1024, files: 1 },
-  fileFilter: (_r, f, cb) => cb(null, ['image/png', 'image/jpeg', 'image/webp'].includes(f.mimetype)),
+  fileFilter: (_r, file, cb) => cb(null, ALLOWED_TYPES.has(file.mimetype)),
 }).single('file');
 
 const router = SafeRouter();
@@ -385,7 +380,7 @@ router.post('/deposit-qr', requireAdmin('owner'), (req, res) => {
   qrUpload(req, res, async err => {
     if (err) return res.status(400).json({ error: 'Upload failed (PNG/JPG/WebP, max 3MB).' });
     if (!req.file) return res.status(400).json({ error: 'Choose an image.' });
-    const url = '/uploads/' + req.file.filename;
+    const url = await saveFile(req.file, 'qr-settings');
     await col('settings').updateOne({ id: 1 }, { $set: { qr_image: url } });
     await audit(req.admin, 'settings.qr', { detail: { url }, ip: req.clientIp });
     res.status(201).json({ url });

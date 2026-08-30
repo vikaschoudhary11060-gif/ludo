@@ -17,6 +17,7 @@ import battleRoutes from './routes/battles.js';
 import leaderboardRoutes from './routes/leaderboard.js';
 import supportRoutes from './routes/support.js';
 import uploadRoutes, { UPLOAD_ROOT } from './routes/uploads.js';
+import { getFile } from './lib/storage.js';
 import adminRoutes from './routes/admin.js';
 import pushRoutes from './routes/push.js';
 import chatRoutes from './routes/chat.js';
@@ -83,7 +84,18 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/referrals', referralRoutes);
 app.use('/api/payments', paymentUserRoutes);
 
-// Uploaded proof and KYC images.
+// Uploaded proof and KYC images (served from disk cache or MongoDB Atlas)
+app.get('/uploads/:filename', async (req, res, next) => {
+  try {
+    const file = await getFile(req.params.filename);
+    if (!file) return next();
+    res.set('Content-Type', file.mimetype);
+    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    res.send(file.buffer);
+  } catch (err) {
+    next(err);
+  }
+});
 app.use('/uploads', express.static(UPLOAD_ROOT, { maxAge: '7d', index: false }));
 
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Unknown endpoint.' }));

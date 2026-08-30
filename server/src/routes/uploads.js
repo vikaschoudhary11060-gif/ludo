@@ -5,35 +5,20 @@
 import express from 'express';
 import { SafeRouter } from '../lib/safe-router.js';
 import multer from 'multer';
-import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
 import multerLib from 'multer';
 import { col, now, nextId, notify } from '../lib/db.js';
 import { parseOfflineEkyc, mobileMatches, certAvailable } from '../lib/aadhaar-offline.js';
 import { requireAuth } from '../lib/auth.js';
+import { memoryStorage, ALLOWED_TYPES, saveFile, UPLOAD_ROOT } from '../lib/storage.js';
 
 const router = SafeRouter();
-
-const ROOT = path.resolve(process.env.UPLOAD_DIR || './data/uploads');
-fs.mkdirSync(ROOT, { recursive: true });
-
-const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_BYTES = 5 * 1024 * 1024;   // 5 MB
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, ROOT),
-  filename: (req, file, cb) => {
-    const ext = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' }[file.mimetype];
-    cb(null, `${req.user.id}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`);
-  },
-});
-
 const upload = multer({
-  storage,
+  storage: memoryStorage,
   limits: { fileSize: MAX_BYTES, files: 1 },
   fileFilter: (_req, file, cb) =>
-    ALLOWED.has(file.mimetype) ? cb(null, true) : cb(new Error('BAD_TYPE')),
+    ALLOWED_TYPES.has(file.mimetype) ? cb(null, true) : cb(new Error('BAD_TYPE')),
 });
 
 /* Multer errors are thrown, not passed as status codes — translate them. */
@@ -48,15 +33,16 @@ function handle(field) {
 }
 
 /* POST /api/uploads/proof  (multipart: file)  -> { url } */
-router.post('/proof', requireAuth, handle('file'), (req, res) => {
+router.post('/proof', requireAuth, handle('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Upload screenshot.' });
-  res.status(201).json({ url: `/uploads/${req.file.filename}`, name: req.file.originalname });
+  const url = await saveFile(req.file, `proof-${req.user.id}`, req.user.id);
+  res.status(201).json({ url, name: req.file.originalname });
 });
 
 /* POST /api/uploads/avatar  (multipart: file) -> { url } */
 router.post('/avatar', requireAuth, handle('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Choose an image.' });
-  const url = `/uploads/${req.file.filename}`;
+  const url = await saveFile(req.file, `avatar-${req.user.id}`, req.user.id);
   await col('users').updateOne({ id: req.user.id }, { $set: { avatar_url: url } });
   res.status(201).json({ url });
 });
@@ -66,7 +52,7 @@ router.post('/kyc/:slot', requireAuth, handle('file'), async (req, res) => {
   const slot = req.params.slot;
   if (!['front', 'back', 'selfie'].includes(slot)) return res.status(400).json({ error: 'Unknown document slot.' });
   if (!req.file) return res.status(400).json({ error: 'Choose a file.' });
-  const path = `/uploads/${req.file.filename}`;
+  const path = await saveFile(req.file, `kyc-${req.user.id}-${slot}`, req.user.id);
   await col('kyc_documents').updateOne({ user_id: req.user.id, slot },
     { $set: { path, created_at: now() }, $setOnInsert: { user_id: req.user.id, slot } }, { upsert: true });
   res.status(201).json({ url: path, slot });
