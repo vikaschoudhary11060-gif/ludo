@@ -65,12 +65,20 @@
   /* Short labels for a narrow table. Wording follows the battle room so a
      player does not meet two names for the same state. */
   const MINE_STATUS = {
-    open:      ['Waiting',      'bg-gold/20 text-gold-deep'],
-    requested: ['Requested',    'bg-brand/15 text-brand'],
-    waiting:   ['Starting',     'bg-brand/15 text-brand'],
-    running:   ['Running',      'bg-cta/15 text-cta-deep'],
-    disputed:  ['Under review', 'bg-live/15 text-live'],
+    open:      ['Waiting',   'bg-gold/20 text-gold-deep'],
+    requested: ['Requested', 'bg-brand/15 text-brand'],
+    waiting:   ['Starting',  'bg-brand/15 text-brand'],
+    running:   ['Running',   'bg-cta/15 text-cta-deep'],
+    // Kept short: the row also carries a cancel action, and the table has to
+    // fit a 320px phone without scrolling sideways.
+    disputed:  ['Review',    'bg-live/15 text-live'],
   };
+
+  const CANCEL_ICON =
+    `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+          stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+       <path d="M6 6l12 12M18 6L6 18"></path>
+     </svg>`;
 
   /* An eye, so the action reads as "look at this" rather than "do something". */
   const DETAILS_ICON =
@@ -79,6 +87,22 @@
        <path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12Z"></path>
        <circle cx="12" cy="12" r="3"></circle>
      </svg>`;
+
+  /* Cancelling is only possible before the match starts, and the server
+     enforces that too: the host may cancel an `open` or `requested` battle,
+     and a player who asked to join may withdraw that request. Once a room
+     code exists the battle has to be played and reported. */
+  function cancelButton(b, isCreator) {
+    const canCancel = isCreator && (b.status === 'open' || b.status === 'requested');
+    const canWithdraw = !isCreator && b.status === 'requested';
+    if (!canCancel && !canWithdraw) return '';
+    const attr = canCancel ? `data-mine-cancel="${b.id}"` : `data-mine-withdraw="${b.id}"`;
+    const label = canCancel ? `Cancel the ${money(b.amount)} battle` : 'Withdraw your join request';
+    return `<button class="inline-grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[5px]
+                           border border-live/60 text-live transition hover:bg-live hover:text-white
+                           focus-visible:bg-live focus-visible:text-white"
+                    type="button" ${attr} aria-label="${label}" title="${label}">${CANCEL_ICON}</button>`;
+  }
 
   function mineRow(b) {
     const me = K.state.user;
@@ -98,11 +122,14 @@
       <td class="px-2.5 py-2 align-middle">
         <span class="block max-w-[110px] truncate text-ink">${other ? esc(other.name) : '<span class="text-muted">—</span>'}</span>
       </td>
-      <td class="px-2.5 py-2 text-right align-middle">
-        <a class="inline-grid h-[30px] w-[30px] place-items-center rounded-[5px] border border-line text-muted
-                  transition hover:border-brand hover:text-brand focus-visible:border-brand focus-visible:text-brand"
-           href="battle.html?id=${b.id}" aria-label="Open details for the ${money(b.amount)} battle"
-           title="Open battle details">${DETAILS_ICON}</a>
+      <td class="px-2 py-2 align-middle">
+        <span class="flex items-center justify-end gap-1.5">
+          ${cancelButton(b, isCreator)}
+          <a class="inline-grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[5px] border border-line text-muted
+                    transition hover:border-brand hover:text-brand focus-visible:border-brand focus-visible:text-brand"
+             href="battle.html?id=${b.id}" aria-label="Open details for the ${money(b.amount)} battle"
+             title="Open battle details">${DETAILS_ICON}</a>
+        </span>
       </td>
     </tr>`;
   }
@@ -207,13 +234,47 @@
       if (!amount) return showError('Enter an amount.');
       await busy($('#create-btn'), '', async () => {
         try {
-          const { battle } = await Api.battles.create(mode, amount);
-          toast('Battle created', 'success');
-          location.href = 'battle.html?id=' + battle.id;
+          await Api.battles.create(mode, amount);
+          toast('Battle created — waiting for an opponent', 'success');
+          /* Stay on the lobby: the new battle shows up in My Battles below,
+             where it can be watched or cancelled. */
+          $('#amount').value = '';
+          clearError();
+          await K.refresh(); K.paint();       // the stake has left the balance
+          await load();
+          $('#mine-section')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         } catch (err) {
           showError(err.message);
           toast(err.message, 'error');
         }
+      });
+    });
+
+    /* My Battles actions. Delegated, because the rows are re-rendered on every
+       live update and per-row listeners would be lost with them. */
+    $('#mine-rows').addEventListener('click', async e => {
+      const cancel = e.target.closest('[data-mine-cancel]');
+      const withdraw = e.target.closest('[data-mine-withdraw]');
+      if (!cancel && !withdraw) return;
+
+      const btn = cancel || withdraw;
+      const id = btn.dataset.mineCancel || btn.dataset.mineWithdraw;
+      if (!confirm(cancel
+        ? 'Cancel this battle? Your entry fee is refunded.'
+        : 'Withdraw your request to join this battle?')) return;
+
+      await busy(btn, '', async () => {
+        try {
+          if (cancel) {
+            await Api.battles.cancel(id);
+            toast('Battle cancelled — amount refunded', 'success');
+          } else {
+            await Api.battles.cancelRequest(id);
+            toast('Join request withdrawn', 'info');
+          }
+          await K.refresh(); K.paint();      // the refund lands in the balance
+          await load();
+        } catch (err) { toast(err.message, 'error'); load(); }
       });
     });
 
