@@ -10,7 +10,7 @@
   const { $, $$, money, toast, busy, copy } = K;
 
   const id = new URLSearchParams(location.search).get('id');
-  let battle = null, claims = [], chosen = null, commission = 0.05;
+  let battle = null, claims = [], chosen = null;
   /* Server-owned windows, filled from /api/config. The literals are only a
      stand-in until that call returns — the server is always the authority. */
   let cancelWindowMs = 60 * 1000, claimGraceMs = 10 * 60 * 1000;
@@ -51,7 +51,7 @@
     disputed:  ['Result under review by support',              'bg-live/15 text-live'],
   };
 
-  const payoutFor = amt => Math.round(amt * 2 * (1 - commission));
+  const payoutFor = amt => K.prizeFor(amt);   // tiered, matching the server
   const me = () => K.state.user;
   const isCreator  = () => battle && me() && battle.creator  && battle.creator.id  === me().id;
   const isAcceptor = () => battle && me() && battle.acceptor && battle.acceptor.id === me().id;
@@ -236,12 +236,11 @@
   K.ready.then(async () => {
     if (!id) { $('#battle-missing').hidden = false; return; }
     try {
-      const conf = await Api.config();
+      const conf = await K.config();
       /* Take a value only when the server actually sent a usable number. A
          bare assignment would replace a working default with undefined and
          put NaN on screen; `> 0` would discard a deliberate zero window. */
       const num = (v, fallback) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback);
-      commission = num(conf.commission, commission);
       cancelWindowMs = num(conf.cancelWindowMs, cancelWindowMs);
       claimGraceMs = num(conf.claimGraceMs, claimGraceMs);
     } catch {}

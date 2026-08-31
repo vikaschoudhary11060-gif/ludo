@@ -4,18 +4,18 @@
   'use strict';
   const K = window.Khelbro; const { $, money } = K;
   const id = new URLSearchParams(location.search).get('id');
-  let started = Date.now(), commission = 0.05;
+  let started = Date.now();
 
   K.ready.then(async () => {
     if (!id) { location.replace('battles.html'); return; }
-    try { commission = (await Api.config()).commission; } catch {}
+    await K.config();
 
     let battle;
     try { battle = (await Api.battles.get(id)).battle; }
     catch { location.replace('battles.html'); return; }
 
     $('#wr-amount').textContent = money(battle.amount);
-    $('#wr-prize').textContent = money(Math.round(battle.amount * 2 * (1 - commission)));
+    $('#wr-prize').textContent = money(K.prizeFor(battle.amount));
     $('#wr-back').href = 'battles.html?mode=' + battle.mode;
     started = battle.createdAt || Date.now();
 

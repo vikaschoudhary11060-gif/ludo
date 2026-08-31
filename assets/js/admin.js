@@ -770,7 +770,9 @@
       toggle('withdraw_open', 'Withdrawals open') +
       toggle('deposit_open', 'Deposits open') +
       toggle('maintenance', 'Maintenance mode') +
-      num('commission', 'Commission (0.05 = 5%)', '0.01') +
+      num('commission_threshold', 'Commission threshold (₹)', '50') +
+      num('commission_under', 'Rate below threshold (0.035 = 3.5%)', '0.005') +
+      num('commission_from', 'Rate at/above threshold (0.025 = 2.5%)', '0.005') +
       num('referral_rate', 'Referral rate', '0.01') +
       num('battle_limit', 'Max open battles per user', '1') +
       `<label class="flex items-center gap-3"><input class="field !h-9 w-56" value="${esc(settings.upi_id || '')}" data-set="upi_id"><span class="text-body text-ink">Deposit UPI ID</span></label>` +

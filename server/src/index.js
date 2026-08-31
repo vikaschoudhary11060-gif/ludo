@@ -26,7 +26,7 @@ import { userRouter as paymentUserRoutes } from './routes/payments.js';
 import { attachRealtime } from './realtime.js';
 import { startSettlementSweeper } from './lib/settle-sweeper.js';
 import { MODES, DEPOSIT, WITHDRAW, BONUS_PER, BONUS_AMOUNT,
-         CANCEL_WINDOW_MS, CLAIM_GRACE_MS, IS_DEV } from './lib/config.js';
+         CANCEL_WINDOW_MS, CLAIM_GRACE_MS, IS_DEV, commissionFor } from './lib/config.js';
 import { getSettings, connect, ensureSeed } from './lib/db.js';
 
 const app = express();
@@ -60,6 +60,14 @@ app.get('/api/config', async (_req, res) => {
   res.json({
     modes: MODES, deposit: DEPOSIT, withdraw: WITHDRAW,
     commission: s.commission, referralRate: s.referral_rate, battleLimit: s.battle_limit,
+    /* The commission depends on the stake, so the client is given the whole
+       rule rather than one rate — otherwise the prize it advertises would not
+       match the prize that gets paid. */
+    commissionTiers: {
+      threshold: s.commission_threshold,
+      under: commissionFor(0, s),
+      from: commissionFor(s.commission_threshold, s),
+    },
     withdrawOpen: !!s.withdraw_open, depositOpen: !!s.deposit_open,
     maintenance: !!s.maintenance, notice: s.notice, upiId: s.upi_id, qrImage: s.qr_image,
     bonus: { per: BONUS_PER, amount: BONUS_AMOUNT },

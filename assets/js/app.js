@@ -17,6 +17,38 @@
   /* Shared state, refreshed from the server. */
   const state = { user: null, wallet: null, stats: null, config: null, online: false };
 
+  /* One /api/config fetch per page, shared by everything that needs it. */
+  let configPromise = null;
+  function config() {
+    return (configPromise ??= Api.config()
+      .then(c => (state.config = c))
+      .catch(() => (state.config = {})));
+  }
+
+  /* The commission depends on the stake, so the prize must be computed the
+     same way the server computes it. Falls back to the published defaults
+     until /api/config lands. */
+  const TIERS = { threshold: 500, under: 0.035, from: 0.025 };
+  function commissionFor(amount) {
+    const t = (state.config && state.config.commissionTiers) || TIERS;
+    const threshold = Number.isFinite(t.threshold) ? t.threshold : TIERS.threshold;
+    const rate = Number(amount) < threshold ? t.under : t.from;
+    return Number.isFinite(rate) && rate >= 0 && rate < 1 ? rate : TIERS.from;
+  }
+  const prizeFor = amount => Math.round(amount * 2 * (1 - commissionFor(amount)));
+
+  /** The tiers actually in force — the server's if it published them, else the
+      built-in defaults. Never undefined, so callers can always show the rule. */
+  function commissionTiers() {
+    const t = (state.config && state.config.commissionTiers) || {};
+    const ok = (v, fallback) => (Number.isFinite(v) && v >= 0 ? v : fallback);
+    return {
+      threshold: ok(t.threshold, TIERS.threshold),
+      under: ok(t.under, TIERS.under),
+      from: ok(t.from, TIERS.from),
+    };
+  }
+
   /* ---------------- toasts ---------------- */
   let toastHost;
   function toast(message, type = 'info', ms = 3200) {
@@ -302,6 +334,7 @@
       captureReferral();
       // The API host sleeps when idle; nudge it awake before anything needs it.
       if (window.Api && Api.wake) Api.wake();
+      config();                              // one fetch, shared by every page script
       initDrawer(); initModals(); markActiveNav();
       $$('[data-year]').forEach(el => (el.textContent = new Date().getFullYear()));
       $$('[data-action="logout"]').forEach(b =>
@@ -319,6 +352,7 @@
 
   window.Khelbro = {
     $, $$, money, toast, state, ready, refresh, paint, logout,
+    config, commissionFor, prizeFor, commissionTiers,
     revealAfter, requireSession, busy, copy,
     on, watchBattle, leaveBattle, connect,
     get socket() { return socket; },

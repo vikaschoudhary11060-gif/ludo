@@ -42,7 +42,7 @@
 <link rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Saira+Semi+Condensed:wght@600;700&display=swap">
 <link rel="stylesheet" href="assets/css/app.css">
-<script>window.KHELBRO_API = "https://ludo-qu3q.onrender.com"; window.KHELBRO_BUILD = "71a3c1e06e1b";
+<script>window.KHELBRO_API = "https://ludo-qu3q.onrender.com"; window.KHELBRO_BUILD = "3e269ba6d828";
 // Runs before paint so the theme never flashes.
 (function(){try{var t=localStorage.getItem('khelbro.theme')||
 (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
@@ -186,6 +186,37 @@ var l=localStorage.getItem('khelbro.lang');if(l)document.documentElement.lang=l;
       </p>
 
       <div class="divider-x"></div>
+
+      <!-- My Battles — the signed-in player's own active bets, so they can get
+           back into one without hunting for it in the public lists. -->
+      <section class="section-pad" id="mine-section" data-when="in" hidden>
+        <div class="mb-2 flex items-center">
+          <img src="assets/img/icon-running.svg" alt="" width="20" height="20" class="h-5 w-5">
+          <span class="section-title ml-2">My Battles</span>
+          <span class="ml-auto text-[11.25px] font-bold uppercase text-muted" id="mine-count"></span>
+        </div>
+
+        <!-- Scrolls on its own so the page never scrolls sideways on a phone. -->
+        <div class="overflow-x-auto rounded-[5px] border border-line bg-surface" id="mine-wrap" hidden>
+          <table class="w-full border-collapse text-[11.25px]">
+            <caption class="sr-only">Your active battles</caption>
+            <thead>
+              <tr class="border-b border-accent-hair text-left text-[9.75px] font-bold uppercase text-muted">
+                <th class="px-2.5 py-2 font-bold" scope="col">Amount</th>
+                <th class="px-2.5 py-2 font-bold" scope="col">Status</th>
+                <th class="px-2.5 py-2 font-bold" scope="col">Opponent</th>
+                <th class="px-2.5 py-2 text-right font-bold" scope="col">Details</th>
+              </tr>
+            </thead>
+            <tbody id="mine-rows" class="text-ink"></tbody>
+          </table>
+        </div>
+        <p class="py-6 text-center text-[11.25px] text-muted" id="mine-empty" hidden>
+          You have no battles in play. Create one above or join an open battle.
+        </p>
+      </section>
+
+      <div class="divider-x" data-when="in" hidden></div>
 
       <!-- Open Battles -->
       <section class="section-pad">

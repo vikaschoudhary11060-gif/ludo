@@ -11,7 +11,7 @@
    `auto_settle_at` — those are real conflicts and stay for an admin.
    ============================================================ */
 import { col, now, credit, notify, getSettings, withTransaction } from './db.js';
-import { payoutFor, GRACE_LABEL } from './config.js';
+import { prizeFor, GRACE_LABEL } from './config.js';
 import { payReferralCuts } from './settlement.js';
 import { shape } from './battle-view.js';
 
@@ -102,7 +102,7 @@ async function settleOne(battleId, settings) {
       return { state: 'left-for-admin' };
     }
 
-    const payout = payoutFor(b.amount, settings.commission);
+    const payout = prizeFor(b.amount, settings);
     const settledAt = now();
     if (!await claim({ status: 'completed', winner_id: winner, payout, settled_at: settledAt }))
       return { state: 'skipped' };

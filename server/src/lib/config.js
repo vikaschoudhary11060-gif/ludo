@@ -65,7 +65,10 @@ export const SETTINGS_DEFAULTS = {
   deposit_open: 1,
   maintenance: 0,
   notice: null,
-  commission: 0.05,
+  commission: 0.05,               // legacy flat rate, superseded by the tiers
+  commission_threshold: 500,      // stakes below this take the higher rate
+  commission_under: 0.035,        // 3.5% below the threshold
+  commission_from: 0.025,         // 2.5% at or above it
   battle_limit: 2,
   referral_rate: 0.01,
   upi_id: 'khelbro@upi',
@@ -74,5 +77,32 @@ export const SETTINGS_DEFAULTS = {
 
 export const COMMISSION = SETTINGS_DEFAULTS.commission;
 export const REFERRAL_RATE = SETTINGS_DEFAULTS.referral_rate;
-export const payoutFor = (amount, commission = SETTINGS_DEFAULTS.commission) =>
+
+/* ---------- commission tiers ----------
+   Small battles carry a higher rate than large ones: below the threshold
+   3.5%, at or above it 2.5%. A battle of exactly the threshold amount takes
+   the lower rate — "below ₹500" is the higher tier, ₹500 itself is not. */
+export const COMMISSION_THRESHOLD = 500;
+export const COMMISSION_UNDER = 0.035;   // stake < threshold
+export const COMMISSION_FROM  = 0.025;   // stake >= threshold
+
+const rate = (v, fallback) =>
+  (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v < 1 ? v : fallback);
+
+/** The commission rate that applies to a given stake. */
+export function commissionFor(amount, settings = {}) {
+  const threshold = (typeof settings.commission_threshold === 'number'
+    && Number.isFinite(settings.commission_threshold) && settings.commission_threshold >= 0)
+    ? settings.commission_threshold : COMMISSION_THRESHOLD;
+  return Number(amount) < threshold
+    ? rate(settings.commission_under, COMMISSION_UNDER)
+    : rate(settings.commission_from, COMMISSION_FROM);
+}
+
+/** Winner's take: both stakes less the commission that applies to this stake. */
+export const payoutFor = (amount, commission = COMMISSION_FROM) =>
   Math.round(amount * 2 * (1 - commission));
+
+/** Convenience for callers that hold settings rather than a resolved rate. */
+export const prizeFor = (amount, settings = {}) =>
+  payoutFor(amount, commissionFor(amount, settings));

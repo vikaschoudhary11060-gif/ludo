@@ -8,7 +8,7 @@
 
   const mode = new URLSearchParams(location.search).get('mode') === 'rich' ? 'rich' : 'lite';
   let cfg = { name: 'Ludo Classic', min: 50, max: 25000, step: 10 };
-  let open = [], running = [];
+  let open = [], running = [], mine = [];
 
   const avatar = (name, tint) =>
     `<span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full ${tint} text-[11px] font-bold text-white"
@@ -57,20 +57,91 @@
       </div>
     </li>`;
 
+  /* ---------- the player's own battles ----------
+     Only states you can still act on. Settled and cancelled ones live in
+     game history, not here. */
+  const ACTIVE = ['open', 'requested', 'waiting', 'running', 'disputed'];
+
+  /* Short labels for a narrow table. Wording follows the battle room so a
+     player does not meet two names for the same state. */
+  const MINE_STATUS = {
+    open:      ['Waiting',      'bg-gold/20 text-gold-deep'],
+    requested: ['Requested',    'bg-brand/15 text-brand'],
+    waiting:   ['Starting',     'bg-brand/15 text-brand'],
+    running:   ['Running',      'bg-cta/15 text-cta-deep'],
+    disputed:  ['Under review', 'bg-live/15 text-live'],
+  };
+
+  /* An eye, so the action reads as "look at this" rather than "do something". */
+  const DETAILS_ICON =
+    `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+       <path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12Z"></path>
+       <circle cx="12" cy="12" r="3"></circle>
+     </svg>`;
+
+  function mineRow(b) {
+    const me = K.state.user;
+    const isCreator = me && b.creator && b.creator.id === me.id;
+    // "Opponent" is whoever is not you.
+    const other = isCreator ? b.acceptor : b.creator;
+    const [label, tint] = MINE_STATUS[b.status] || [b.status, 'bg-surface-page text-muted-dark'];
+    const modeTag = b.mode === 'rich' ? 'Rich' : 'Lite';
+    return `<tr class="border-t border-accent-hair" data-battle="${b.id}">
+      <td class="px-2.5 py-2 align-middle">
+        <span class="block font-black text-ink">${money(b.amount)}</span>
+        <span class="block text-[9px] font-bold uppercase text-muted">${modeTag}</span>
+      </td>
+      <td class="px-2.5 py-2 align-middle">
+        <span class="inline-block rounded-full px-2 py-0.5 text-[9.75px] font-bold uppercase ${tint}">${t(label)}</span>
+      </td>
+      <td class="px-2.5 py-2 align-middle">
+        <span class="block max-w-[110px] truncate text-ink">${other ? esc(other.name) : '<span class="text-muted">—</span>'}</span>
+      </td>
+      <td class="px-2.5 py-2 text-right align-middle">
+        <a class="inline-grid h-[30px] w-[30px] place-items-center rounded-[5px] border border-line text-muted
+                  transition hover:border-brand hover:text-brand focus-visible:border-brand focus-visible:text-brand"
+           href="battle.html?id=${b.id}" aria-label="Open details for the ${money(b.amount)} battle"
+           title="Open battle details">${DETAILS_ICON}</a>
+      </td>
+    </tr>`;
+  }
+
+  function renderMine() {
+    const section = $('#mine-section');
+    if (!section) return;
+    const signedIn = !!K.state.user;
+    section.hidden = !signedIn;
+    if (!signedIn) return;
+
+    $('#mine-rows').innerHTML = mine.map(mineRow).join('');
+    $('#mine-wrap').hidden = mine.length === 0;
+    $('#mine-empty').hidden = mine.length > 0;
+    $('#mine-count').textContent = mine.length ? `${mine.length} active` : '';
+  }
+
   function render() {
     $('#open-list').innerHTML = open.map(openCard).join('');
     $('#open-empty').hidden = open.length > 0;
     $('#running-list').innerHTML = running.map(runningCard).join('');
     $('#running-empty').hidden = running.length > 0;
+    renderMine();
   }
 
   async function load() {
     try {
-      const [o, r] = await Promise.all([
+      /* `mine` is not filtered by mode: a player wants every battle they are
+         in, not only the ones matching the tab they happen to be looking at.
+         It is only requested when signed in — /battles/mine needs auth. */
+      const [o, r, m] = await Promise.all([
         Api.battles.list(mode, 'open'),
         Api.battles.list(mode, 'running'),
+        K.state.user ? Api.battles.mine().catch(() => ({ battles: [] })) : Promise.resolve({ battles: [] }),
       ]);
       open = o.battles; running = r.battles;
+      mine = (m.battles || [])
+        .filter(b => ACTIVE.includes(b.status))
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       render();
     } catch (e) {
       toast(e.message, 'error');
@@ -94,12 +165,28 @@
       cfg = conf.modes[mode];
     } catch { /* fall back to the defaults above */ }
 
-    // Commission is a server setting, so show whatever it actually is.
+    /* Commission is a server setting and depends on the stake, so show the
+       real tiers rather than one number that would be wrong for half of them. */
     try {
-      const conf = await Api.config();
-      const pct = Math.round(conf.commission * 100);
-      $('#commission-value').textContent = pct + '%';
-      $('#commission-example').textContent = money(Math.round(500 * 2 * (1 - conf.commission)));
+      const conf = await K.config();
+      /* `tiers`, not `t` — `t` is the translator in this scope. These always
+         resolve, so the table shows both rates even against a server that
+         does not publish them; one row labelled "All amounts" would state a
+         rate that is wrong for half of every stake. */
+      const tiers = K.commissionTiers();
+      const pct = r => (r * 100).toFixed(1).replace(/\.0$/, '') + '%';
+      const rows = $('#commission-rows');
+      if (rows) {
+        rows.innerHTML = [
+          [`${t('Below')} ${money(tiers.threshold)}`, pct(tiers.under)],
+          [`${money(tiers.threshold)} ${t('and above')}`, pct(tiers.from)],
+        ].map(([label, rate]) =>
+          `<tr><td class="border border-line px-2 py-1.5">${label}</td>` +
+          `<td class="border border-line px-2 py-1.5">${rate}</td></tr>`).join('');
+      }
+      // Example uses a stake on the lower-rate side, matching the label above.
+      const eg = $('#commission-example');
+      if (eg) eg.textContent = money(K.prizeFor(500));
       if (conf.notice) toast(conf.notice, 'info', 6000);
     } catch {}
 
@@ -156,6 +243,9 @@
 
     /* ---- live lobby ---- */
     K.on('battle:created', b => {
+      // My own battle, possibly in the other mode — refresh My Battles for it.
+      const me = K.state.user;
+      if (me && b.creator && b.creator.id === me.id) { load(); return; }
       if (b.mode !== mode || b.status !== 'open') return;
       if (open.some(x => x.id === b.id)) return;
       open.unshift(b); render();

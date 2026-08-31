@@ -11,7 +11,8 @@ import assert from 'node:assert/strict';
 import {
   bonusFor, BONUS_PER, BONUS_AMOUNT, BONUS_LABEL,
   cancelWindowOpen, CANCEL_WINDOW_MS, CLAIM_GRACE_MS,
-  payoutFor, SETTINGS_DEFAULTS,
+  payoutFor, prizeFor, commissionFor, SETTINGS_DEFAULTS,
+  COMMISSION_THRESHOLD, COMMISSION_UNDER, COMMISSION_FROM,
 } from '../server/src/lib/config.js';
 import { decideLoneClaim } from '../server/src/lib/settle-sweeper.js';
 
@@ -164,10 +165,11 @@ test('payout', async t => {
     assert.equal(Number.isInteger(payoutFor(333, 0.05)), true);
   });
 
-  await t.test('never returns NaN when commission is missing', () => {
-    // getSettings() now backfills, but the default must hold on its own.
-    assert.equal(payoutFor(500), 950);
+  await t.test('never returns NaN when no rate is given', () => {
+    // Bare payoutFor falls back to the standard tier rate, not the legacy flat one.
+    assert.equal(payoutFor(500), payoutFor(500, COMMISSION_FROM));
     assert.equal(Number.isFinite(payoutFor(500)), true);
+    assert.ok(payoutFor(500) > 0 && payoutFor(500) <= 1000);
   });
 });
 
@@ -181,4 +183,80 @@ test('settings defaults are complete and numeric', () => {
   assert.equal(SETTINGS_DEFAULTS.referral_rate, 0.01);
   assert.equal(SETTINGS_DEFAULTS.commission, 0.05);
   assert.ok(SETTINGS_DEFAULTS.battle_limit >= 1);
+});
+
+/* ---------------- tiered commission ---------------- */
+
+test('commission tiers', async t => {
+  await t.test('a stake below the threshold takes the higher rate', () => {
+    for (const amount of [50, 100, 250, 499]) {
+      assert.equal(commissionFor(amount, {}), 0.035, `₹${amount} should be 3.5%`);
+    }
+  });
+
+  await t.test('the threshold itself takes the lower rate', () => {
+    // "below ₹500" is the higher tier; ₹500 is not below ₹500.
+    assert.equal(commissionFor(500, {}), 0.025);
+  });
+
+  await t.test('a stake above the threshold takes the lower rate', () => {
+    for (const amount of [501, 1000, 25000, 100000]) {
+      assert.equal(commissionFor(amount, {}), 0.025, `₹${amount} should be 2.5%`);
+    }
+  });
+
+  await t.test('the constants match the tiers', () => {
+    assert.equal(COMMISSION_THRESHOLD, 500);
+    assert.equal(COMMISSION_UNDER, 0.035);
+    assert.equal(COMMISSION_FROM, 0.025);
+  });
+
+  await t.test('settings override the built-in tiers', () => {
+    const s = { commission_threshold: 1000, commission_under: 0.05, commission_from: 0.01 };
+    assert.equal(commissionFor(999, s), 0.05);
+    assert.equal(commissionFor(1000, s), 0.01);
+  });
+
+  await t.test('nonsense settings fall back rather than producing NaN', () => {
+    for (const bad of [{ commission_under: 'x' }, { commission_under: NaN },
+                       { commission_under: -1 }, { commission_under: 2 }, {}]) {
+      assert.equal(commissionFor(100, bad), 0.035, JSON.stringify(bad));
+    }
+    assert.equal(commissionFor(100, { commission_threshold: 'x' }), 0.035);
+  });
+});
+
+test('prize at each tier', async t => {
+  await t.test('pays the doubled stake less the tier rate', () => {
+    assert.equal(prizeFor(100, {}), 193);      // 200 - 3.5%
+    assert.equal(prizeFor(499, {}), 963);
+    assert.equal(prizeFor(500, {}), 975);      // 1000 - 2.5%
+    assert.equal(prizeFor(1000, {}), 1950);
+  });
+
+  await t.test('crossing the threshold never pays less for a bigger stake', () => {
+    let previous = 0;
+    for (let amount = 50; amount <= 2000; amount += 1) {
+      const prize = prizeFor(amount, {});
+      assert.ok(prize >= previous, `₹${amount} pays ${prize}, less than ₹${amount - 1} paid ${previous}`);
+      previous = prize;
+    }
+  });
+
+  await t.test('the house never pays out more than the pot', () => {
+    for (const amount of [50, 499, 500, 1000, 100000]) {
+      assert.ok(prizeFor(amount, {}) <= amount * 2, `₹${amount} pays more than both stakes`);
+    }
+  });
+
+  await t.test('whole rupees only', () => {
+    for (const amount of [55, 333, 777, 1234]) {
+      assert.equal(Number.isInteger(prizeFor(amount, {})), true);
+    }
+  });
+
+  await t.test('payoutFor still takes an explicit rate', () => {
+    assert.equal(payoutFor(500, 0.05), 950);
+    assert.equal(payoutFor(500, 0), 1000);
+  });
 });

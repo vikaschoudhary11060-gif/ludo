@@ -9,7 +9,7 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import { col, now, credit, debit, spendable, notify, getSettings, withTransaction } from '../lib/db.js';
 import { requireAuth, optionalAuth } from '../lib/auth.js';
-import { MODES, CLAIM_GRACE_MS, GRACE_LABEL, CANCEL_LABEL, cancelWindowOpen, payoutFor } from '../lib/config.js';
+import { MODES, CLAIM_GRACE_MS, GRACE_LABEL, CANCEL_LABEL, cancelWindowOpen, prizeFor } from '../lib/config.js';
 import { payReferralCuts } from '../lib/settlement.js';
 import { isPlayer, shape, fetchBattles, fetchBattle } from '../lib/battle-view.js';
 
@@ -338,7 +338,7 @@ router.post('/:id/result', requireAuth, async (req, res) => {
         return { state: 'disputed' };
       }
 
-      const payout = payoutFor(b.amount, settings.commission);
+      const payout = prizeFor(b.amount, settings);
       await credit(winner, 'winnings', payout, `Battle won — #${id.slice(-5)}`, id, 'success', session);
       await col('battles').updateOne({ id },
         { $set: { status: 'completed', winner_id: winner, payout, settled_at: now() },

@@ -33,7 +33,10 @@ const HOST = 1, GUEST = 2, STAKE = 500;
 /** A battle parked in dispute with its grace period already elapsed. */
 function seed({ claim = 'won', claimant = HOST, acceptor = GUEST, autoSettleAt = Date.now() - 1000 } = {}) {
   fake.reset();
-  fake.col('settings').docs.push({ id: 1, commission: 0.05, referral_rate: 0.01, battle_limit: 2 });
+  fake.col('settings').docs.push({
+    id: 1, referral_rate: 0.01, battle_limit: 2,
+    commission_threshold: 500, commission_under: 0.035, commission_from: 0.025,
+  });
   fake.col('wallets').docs.push({ user_id: HOST, deposit: 0, winnings: 0, referral: 0 });
   fake.col('wallets').docs.push({ user_id: GUEST, deposit: 0, winnings: 0, referral: 0 });
   fake.col('users').docs.push({ id: HOST, name: 'Host', referred_by: null });
@@ -76,8 +79,8 @@ test('sweeper settles an unanswered claim', async t => {
     assert.equal(r.state, 'completed');
     assert.equal(battle().status, 'completed');
     assert.equal(battle().winner_id, HOST);
-    // 500 * 2 * 0.95
-    assert.equal(wallet(HOST).winnings, 950);
+    // ₹500 is at the threshold, so 2.5%: 1000 - 25.
+    assert.equal(wallet(HOST).winnings, 975);
     assert.equal(wallet(GUEST).winnings, 0);
     assert.equal(battle().auto_settle_at, undefined, 'clock must be cleared');
   });
@@ -87,7 +90,7 @@ test('sweeper settles an unanswered claim', async t => {
     const [r] = await runSettlementSweep(null);
     assert.equal(r.state, 'completed');
     assert.equal(battle().winner_id, GUEST);
-    assert.equal(wallet(GUEST).winnings, 950);
+    assert.equal(wallet(GUEST).winnings, 975);
     assert.equal(wallet(HOST).winnings, 0);
   });
 
@@ -143,7 +146,7 @@ test('sweeper compare-and-swap', async t => {
        then someone else's /result commits before our write lands. The guard
        carries the status and clock we read, so the write must miss. */
     const results = await withConcurrentChange(live => {
-      live.status = 'completed'; live.winner_id = GUEST; live.payout = 950;
+      live.status = 'completed'; live.winner_id = GUEST; live.payout = 975;
       delete live.auto_settle_at;
     });
     assert.equal(results.length, 1);
@@ -208,7 +211,7 @@ test('sweeper broadcast', async t => {
     assert.equal(payload.acceptor.name, 'Guest');
     assert.equal(payload.status, 'completed');
     assert.equal(payload.winnerId, HOST);
-    assert.equal(payload.payout, 950);
+    assert.equal(payload.payout, 975);
     // The room admits only the two players, so the code they already have stays.
     assert.equal(payload.roomCode, '12345678');
     assert.equal(payload.awaitingOpponent, false);
@@ -237,7 +240,7 @@ test('sweeper broadcast', async t => {
     const app = { get: () => ({ to: () => ({ emit: () => { throw new Error('socket gone'); } }) }) };
     await runSettlementSweep(app);
     assert.equal(battle().status, 'completed', 'money already moved and must stand');
-    assert.equal(wallet(HOST).winnings, 950);
+    assert.equal(wallet(HOST).winnings, 975);
   });
 });
 

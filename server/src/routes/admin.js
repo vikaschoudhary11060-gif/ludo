@@ -5,7 +5,7 @@ import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
 import { col, nextId, now, credit, notify, getSettings, audit, withTransaction } from '../lib/db.js';
 import { verifyLogin, signAdmin, requireAdmin, createAdmin, adminCount, ROLES } from '../lib/admin-auth.js';
-import { bonusFor, BONUS_LABEL, payoutFor } from '../lib/config.js';
+import { bonusFor, BONUS_LABEL, prizeFor } from '../lib/config.js';
 import { payReferralCuts } from '../lib/settlement.js';
 import playerRoutes from './admin-players.js';
 import paymentAdminRoutes from './payments.js';
@@ -260,7 +260,7 @@ router.post('/disputes/:id/resolve', requireAdmin('admin'), async (req, res) => 
         const winner = outcome === 'creator' ? b.creator_id : b.acceptor_id;
         const loser  = outcome === 'creator' ? b.acceptor_id : b.creator_id;
         if (!winner || !loser) throw new Error('NOOPPONENT');
-        const payout = payoutFor(b.amount, settings.commission);
+        const payout = prizeFor(b.amount, settings);
         await credit(winner, 'winnings', payout, `Dispute resolved in your favour — #${id.slice(-5)}`, id, 'success', session);
         await col('battles').updateOne({ id }, { $set: { status: 'completed', winner_id: winner, payout, settled_at: now() } }, { session });
         notes.push([winner, 'Dispute resolved — you won', `₹${payout} credited.${note ? ' ' + note : ''}`],
@@ -427,6 +427,10 @@ router.patch('/settings', requireAdmin('owner'), async (req, res) => {
     withdraw_open: z.boolean().optional(), deposit_open: z.boolean().optional(), maintenance: z.boolean().optional(),
     notice: z.string().max(300).nullable().optional(), commission: z.number().min(0).max(0.3).optional(),
     battle_limit: z.number().int().min(1).max(10).optional(), referral_rate: z.number().min(0).max(0.2).optional(),
+    // Commission tiers: stakes below the threshold take the higher rate.
+    commission_threshold: z.number().int().min(0).max(1000000).optional(),
+    commission_under: z.number().min(0).max(0.3).optional(),
+    commission_from: z.number().min(0).max(0.3).optional(),
     upi_id: z.string().max(100).optional(),
   }).safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid settings.' });
