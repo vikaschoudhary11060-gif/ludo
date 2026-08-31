@@ -122,7 +122,7 @@
      had. Comparing against the exact string we last wrote tells our own
      frames apart from a real update by app.js. */
   function watchMoney() {
-    document.querySelectorAll('[data-bind="cash"],[data-bind="winnings"],[data-bind="earning"],[data-bind="balance"],[data-bind="won"]')
+    document.querySelectorAll('[data-bind="cash"],[data-bind="winnings"],[data-bind="earning"],[data-bind="referral"],[data-bind="balance"],[data-bind="won"]')
       .forEach(el => {
         const money = el.getAttribute('data-bind') !== 'won';
         const parse = () => Number((el.textContent || '').replace(/[^\d.]/g, '')) || 0;

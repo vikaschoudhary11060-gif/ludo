@@ -168,12 +168,15 @@ def header():
           </span>
           <span class="money-box__add" aria-hidden="true">+</span>
         </a>
-        <a class="money-box !min-w-[84px] !pr-2" href="wallet.html#refer" data-when="in" hidden
-           aria-label="Referral earning">
-          <span class="text-base leading-none" aria-hidden="true">&#127873;</span>
+        <!-- Winnings, not referral: this is the withdrawable balance, so it is
+             the number a player most needs in front of them. Referral sits on
+             the wallet, profile and refer screens. -->
+        <a class="money-box !min-w-[84px] !pr-2" href="wallet.html" data-when="in" hidden
+           aria-label="Winnings balance, withdrawable">
+          <span class="text-base leading-none" aria-hidden="true">&#127942;</span>
           <span class="flex flex-col gap-0.5">
-            <span class="money-box__label">Earning</span>
-            <span class="money-box__value" data-bind="earning">&#8377;0</span>
+            <span class="money-box__label">Winnings</span>
+            <span class="money-box__value" data-bind="winnings">&#8377;0</span>
           </span>
         </a>
       </div>

@@ -103,8 +103,11 @@
 
     const w = state.wallet || { deposit: 0, winnings: 0, referral: 0, total: 0 };
     const set = (sel, v) => $$(`[data-bind="${sel}"]`).forEach(el => (el.textContent = v));
-    set('cash', money(w.deposit));
-    set('winnings', money(w.winnings));
+    set('cash', money(w.deposit));          // deposit — play money
+    set('winnings', money(w.winnings));     // withdrawable
+    set('referral', money(w.referral));     // referral commission
+    /* `earning` predates the split and means the referral bucket on the
+       profile, redeem and wallet screens. Kept so those keep working. */
     set('earning', money(w.referral));
     set('balance', money(w.total));
     set('name', state.user.name);
@@ -297,6 +300,8 @@
   const ready = new Promise(resolve => {
     document.addEventListener('DOMContentLoaded', async () => {
       captureReferral();
+      // The API host sleeps when idle; nudge it awake before anything needs it.
+      if (window.Api && Api.wake) Api.wake();
       initDrawer(); initModals(); markActiveNav();
       $$('[data-year]').forEach(el => (el.textContent = new Date().getFullYear()));
       $$('[data-action="logout"]').forEach(b =>

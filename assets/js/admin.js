@@ -33,10 +33,37 @@
   let autoTimer = null;
 
   /* ---------------- transport ---------------- */
+  /* The API host answers 502/503/504 while it wakes from idle, which made the
+     console look broken — a failed preflight blocks the real request, so login
+     and dispute actions just died. Reads are safely repeatable and are ridden
+     out; writes are never repeated, since a 502 cannot tell us whether the
+     server already processed one. */
+  const WAKING = new Set([502, 503, 504]);
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
   async function call(path, opts = {}) {
     const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
     if (TOKEN) headers.Authorization = 'Bearer ' + TOKEN;
-    const res = await fetch(API + path, { ...opts, headers });
+    const idempotent = !opts.method || opts.method.toUpperCase() === 'GET';
+    const deadline = Date.now() + 45000;
+    let res, attempt = 0;
+
+    for (;;) {
+      try {
+        res = await fetch(API + path, { ...opts, headers });
+      } catch (e) {
+        if (!idempotent || Date.now() >= deadline) throw new Error('Cannot reach the server.');
+        await sleep(Math.min(1000 * 2 ** attempt++, 5000));
+        continue;
+      }
+      if (WAKING.has(res.status) && idempotent && Date.now() < deadline) {
+        await sleep(Math.min(1000 * 2 ** attempt++, 5000));
+        continue;
+      }
+      break;
+    }
+
+    if (WAKING.has(res.status)) throw new Error('The server is starting up. Try again in a moment.');
     const data = await res.json().catch(() => null);
     if (res.status === 401) { signOut(); throw new Error((data && data.error) || 'Session expired.'); }
     if (!res.ok) throw new Error((data && data.error) || `Request failed (${res.status})`);

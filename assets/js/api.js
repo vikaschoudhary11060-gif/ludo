@@ -25,18 +25,49 @@
   const getToken = () => localStorage.getItem(TOKEN_KEY);
   const setToken = t => t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY);
 
+  /* The API sleeps when idle and its host answers 502/503/504 while it wakes,
+     which can take the better part of a minute. A GET is safe to repeat, so we
+     ride that out silently. Anything that changes state is NOT repeated — a
+     502 cannot tell us whether the server processed the request first, and a
+     retried withdrawal would be a second withdrawal. */
+  const WAKING = new Set([502, 503, 504]);
+  const RETRY_FOR_MS = 45000;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
   async function request(path, { method = 'GET', body, auth = true } = {}) {
     const headers = { 'Content-Type': 'application/json' };
     const token = getToken();
     if (auth && token) headers.Authorization = 'Bearer ' + token;
 
-    let res;
-    try {
-      res = await fetch(BASE + path, {
-        method, headers, body: body ? JSON.stringify(body) : undefined,
-      });
-    } catch {
-      throw new Error('Cannot reach the server. Check your connection.');
+    const idempotent = method === 'GET';
+    const deadline = Date.now() + RETRY_FOR_MS;
+    let res, attempt = 0;
+
+    for (;;) {
+      try {
+        res = await fetch(BASE + path, {
+          method, headers, body: body ? JSON.stringify(body) : undefined,
+        });
+      } catch {
+        // Never silently repeat a state-changing request we cannot vouch for.
+        if (!idempotent || Date.now() >= deadline) {
+          throw new Error('Cannot reach the server. Check your connection.');
+        }
+        await sleep(Math.min(1000 * 2 ** attempt++, 5000));
+        continue;
+      }
+
+      if (WAKING.has(res.status)) {
+        if (idempotent && Date.now() < deadline) {
+          await sleep(Math.min(1000 * 2 ** attempt++, 5000));
+          continue;
+        }
+        const err = new Error('The server is starting up. Give it a moment and try again.');
+        err.status = res.status;
+        err.code = 'WAKING';
+        throw err;
+      }
+      break;
     }
 
     let data = null;
@@ -59,6 +90,9 @@
 
     config: () => request('/config', { auth: false }),
     health: () => request('/health', { auth: false }),
+    /* Fire-and-forget: starts the host waking so the first real call does not
+       have to. Never rejects — nothing should depend on it. */
+    wake: () => request('/health', { auth: false }).catch(() => null),
 
     auth: {
       requestOtp: phone => request('/auth/request-otp', { method: 'POST', auth: false, body: { phone } }),
