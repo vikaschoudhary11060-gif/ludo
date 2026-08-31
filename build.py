@@ -478,6 +478,46 @@ def stamp_service_worker(bid):
     return bid
 
 
+def css_escape(cls):
+    """Tailwind escapes these when it emits the selector."""
+    out = ''
+    for ch in cls:
+        out += '\\' + ch if ch in '.:[]/()#%!+,<>=' else ch
+    return out
+
+
+def warn_if_css_stale(pages):
+    """Tailwind strips classes it cannot find, and this script does not run it.
+
+    Comparing timestamps cried wolf — Tailwind skips the write when its output
+    is unchanged, so the file is often older than the markup and still correct.
+    Check the thing that actually matters instead: every class the built pages
+    reference should have a selector in the stylesheet."""
+    css_path = ROOT / 'assets' / 'css' / 'app.css'
+    if not css_path.exists():
+        print('  !! assets/css/app.css is missing — run `npm run build`', file=sys.stderr)
+        return
+    css = css_path.read_text(encoding='utf-8')
+
+    used = set()
+    for slug in pages:
+        for attr in re.findall(r'class="([^"]*)"', (ROOT / slug).read_text(encoding='utf-8')):
+            for cls in attr.split():
+                # Skip anything templated or clearly not a utility.
+                if '${' in cls or '{' in cls or not cls or cls[0] in '$#':
+                    continue
+                used.add(cls)
+
+    missing = sorted(c for c in used if ('.' + css_escape(c)) not in css)
+    if missing:
+        shown = ', '.join(missing[:6])
+        extra = f' (+{len(missing) - 6} more)' if len(missing) > 6 else ''
+        print(f'\n  !! {len(missing)} class(es) used in the markup have no rule in app.css:', file=sys.stderr)
+        print(f'     {shown}{extra}', file=sys.stderr)
+        print('     They will do nothing. Rebuild the stylesheet:', file=sys.stderr)
+        print('       npx tailwindcss -i ./src/input.css -o ./assets/css/app.css --minify\n', file=sys.stderr)
+
+
 def build():
     hdr, ftr = header(), footer()
     bid = build_id()
@@ -501,6 +541,8 @@ def build():
         (ROOT / slug).write_text(html, encoding='utf-8')
         built.append(slug)
         print(f'  built {slug:20s} {len(html):>7,} bytes')
+    # After writing, so the check reads exactly what ships.
+    warn_if_css_stale(built + ['admin.html'])
     print(f'\n  build id {bid} (stamped into sw.js)')
     return built
 

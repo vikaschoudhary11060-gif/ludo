@@ -74,6 +74,12 @@
     disputed:  ['Review',    'bg-live/15 text-live'],
   };
 
+  const DELETE_ICON =
+    `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+       <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>
+     </svg>`;
+
   const CANCEL_ICON =
     `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
           stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
@@ -92,43 +98,80 @@
      enforces that too: the host may cancel an `open` or `requested` battle,
      and a player who asked to join may withdraw that request. Once a room
      code exists the battle has to be played and reported. */
-  function cancelButton(b, isCreator) {
-    const canCancel = isCreator && (b.status === 'open' || b.status === 'requested');
-    const canWithdraw = !isCreator && b.status === 'requested';
-    if (!canCancel && !canWithdraw) return '';
-    const attr = canCancel ? `data-mine-cancel="${b.id}"` : `data-mine-withdraw="${b.id}"`;
-    const label = canCancel ? `Cancel the ${money(b.amount)} battle` : 'Withdraw your join request';
-    return `<button class="inline-grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[5px]
-                           border border-live/60 text-live transition hover:bg-live hover:text-white
-                           focus-visible:bg-live focus-visible:text-white"
-                    type="button" ${attr} aria-label="${label}" title="${label}">${CANCEL_ICON}</button>`;
+  const pill = (cls, attr, label, body) =>
+    `<button class="inline-flex h-[32px] shrink-0 items-center gap-1.5 rounded-[5px] px-3
+                    text-[10.5px] font-bold uppercase transition ${cls}"
+             type="button" ${attr} aria-label="${label}" title="${label}">${body}</button>`;
+
+  /* What the player can do from this row, mirroring what the server allows:
+       open       host is searching        -> delete
+       requested  someone asked to join    -> host: start / reject
+                                            -> joiner: withdraw
+       waiting    accepted, no room code   -> either side may cancel
+       running/disputed                    -> nothing; play it out */
+  function rowActions(b, isCreator) {
+    if (b.status === 'open' && isCreator) {
+      return pill('border border-live/60 text-live hover:bg-live hover:text-white',
+        `data-mine-cancel="${b.id}"`, `Delete the ${money(b.amount)} battle`,
+        `${DELETE_ICON}<span>Delete</span>`);
+    }
+    if (b.status === 'requested') {
+      return isCreator
+        ? pill('bg-cta text-white hover:brightness-110',
+            `data-mine-start="${b.id}"`, 'Start the battle', '<span>Start</span>') +
+          pill('border border-live/60 text-live hover:bg-live hover:text-white',
+            `data-mine-reject="${b.id}"`, 'Reject this opponent', '<span>Reject</span>')
+        : pill('border border-live/60 text-live hover:bg-live hover:text-white',
+            `data-mine-withdraw="${b.id}"`, 'Withdraw your join request', '<span>Withdraw</span>');
+    }
+    if (b.status === 'waiting') {
+      // No room code yet: whoever is stuck can call it off and get refunded.
+      return pill('border border-live/60 text-live hover:bg-live hover:text-white',
+        `data-mine-cancel="${b.id}"`, 'Cancel — no room code shared',
+        `${CANCEL_ICON}<span>Cancel</span>`);
+    }
+    return '';
+  }
+
+  /* An open battle is not idle — it is being matched — so it gets a live
+     spinner rather than a static chip. */
+  const SEARCHING = `
+    <span class="inline-flex items-center gap-1.5 whitespace-nowrap text-[9.75px] font-bold uppercase text-gold-deep">
+      <span class="inline-block h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent"
+            aria-hidden="true"></span>
+      <span>${'Finding player'}</span>
+    </span>`;
+
+  function statusCell(b) {
+    if (b.status === 'open') return SEARCHING;
+    const [label, tint] = MINE_STATUS[b.status] || [b.status, 'bg-surface-page text-muted-dark'];
+    return `<span class="inline-block rounded-full px-2 py-0.5 text-[9.75px] font-bold uppercase ${tint}">${t(label)}</span>`;
   }
 
   function mineRow(b) {
     const me = K.state.user;
     const isCreator = me && b.creator && b.creator.id === me.id;
-    // "Opponent" is whoever is not you.
-    const other = isCreator ? b.acceptor : b.creator;
-    const [label, tint] = MINE_STATUS[b.status] || [b.status, 'bg-surface-page text-muted-dark'];
     const modeTag = b.mode === 'rich' ? 'Rich' : 'Lite';
+
+    /* Two rows per battle: the facts, then a full-width action bar. Squeezing
+       up to three buttons into a fourth column wrapped them one-per-line on a
+       phone and made every row three deep. */
     return `<tr class="border-t border-accent-hair" data-battle="${b.id}">
-      <td class="px-2.5 py-2 align-middle">
+      <td class="px-2.5 pb-1 pt-2 align-middle">
         <span class="block font-black text-ink">${money(b.amount)}</span>
         <span class="block text-[9px] font-bold uppercase text-muted">${modeTag}</span>
       </td>
-      <td class="px-2.5 py-2 align-middle">
-        <span class="inline-block rounded-full px-2 py-0.5 text-[9.75px] font-bold uppercase ${tint}">${t(label)}</span>
-      </td>
-      <td class="px-2.5 py-2 align-middle">
-        <span class="block max-w-[110px] truncate text-ink">${other ? esc(other.name) : '<span class="text-muted">—</span>'}</span>
-      </td>
-      <td class="px-2 py-2 align-middle">
-        <span class="flex items-center justify-end gap-1.5">
-          ${cancelButton(b, isCreator)}
-          <a class="inline-grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[5px] border border-line text-muted
-                    transition hover:border-brand hover:text-brand focus-visible:border-brand focus-visible:text-brand"
+      <td class="px-2.5 pb-1 pt-2 align-middle">${statusCell(b)}</td>
+    </tr>
+    <tr data-battle="${b.id}">
+      <td class="px-2.5 pb-2.5 pt-0" colspan="2">
+        <span class="flex flex-wrap items-center justify-end gap-1.5">
+          ${rowActions(b, isCreator)}
+          <a class="inline-flex h-[32px] shrink-0 items-center gap-1.5 rounded-[5px] border border-line px-3
+                    text-[10.5px] font-bold uppercase text-muted transition
+                    hover:border-brand hover:text-brand focus-visible:border-brand focus-visible:text-brand"
              href="battle.html?id=${b.id}" aria-label="Open details for the ${money(b.amount)} battle"
-             title="Open battle details">${DETAILS_ICON}</a>
+             title="Open battle details">${DETAILS_ICON}<span>Details</span></a>
         </span>
       </td>
     </tr>`;
@@ -253,25 +296,56 @@
     /* My Battles actions. Delegated, because the rows are re-rendered on every
        live update and per-row listeners would be lost with them. */
     $('#mine-rows').addEventListener('click', async e => {
-      const cancel = e.target.closest('[data-mine-cancel]');
-      const withdraw = e.target.closest('[data-mine-withdraw]');
-      if (!cancel && !withdraw) return;
+      const el = sel => e.target.closest(sel);
+      const start = el('[data-mine-start]');
+      const reject = el('[data-mine-reject]');
+      const cancel = el('[data-mine-cancel]');
+      const withdraw = el('[data-mine-withdraw]');
+      const btn = start || reject || cancel || withdraw;
+      if (!btn) return;
 
-      const btn = cancel || withdraw;
-      const id = btn.dataset.mineCancel || btn.dataset.mineWithdraw;
-      if (!confirm(cancel
-        ? 'Cancel this battle? Your entry fee is refunded.'
-        : 'Withdraw your request to join this battle?')) return;
+      if (start) {
+        await busy(start, '', async () => {
+          try {
+            await Api.battles.acceptRequest(start.dataset.mineStart);
+            // Accepting means the match is on; the host enters the room code next.
+            location.href = 'battle.html?id=' + start.dataset.mineStart;
+          } catch (err) { toast(err.message, 'error'); load(); }
+        });
+        return;
+      }
 
-      await busy(btn, '', async () => {
-        try {
-          if (cancel) {
-            await Api.battles.cancel(id);
-            toast('Battle cancelled — amount refunded', 'success');
-          } else {
-            await Api.battles.cancelRequest(id);
+      if (reject) {
+        await busy(reject, '', async () => {
+          try {
+            await Api.battles.rejectRequest(reject.dataset.mineReject);
+            toast('Opponent rejected — your battle is open again', 'info');
+            await load();
+          } catch (err) { toast(err.message, 'error'); load(); }
+        });
+        return;
+      }
+
+      if (withdraw) {
+        await busy(withdraw, '', async () => {
+          try {
+            await Api.battles.cancelRequest(withdraw.dataset.mineWithdraw);
             toast('Join request withdrawn', 'info');
-          }
+            await K.refresh(); K.paint();
+            await load();
+          } catch (err) { toast(err.message, 'error'); load(); }
+        });
+        return;
+      }
+
+      // Cancelling costs the other player their match, so ask why.
+      const id = cancel.dataset.mineCancel;
+      const reason = await askCancelReason();
+      if (!reason) return;
+      await busy(cancel, '', async () => {
+        try {
+          await Api.battles.cancel(id, reason);
+          toast('Battle cancelled — amount refunded', 'success');
           await K.refresh(); K.paint();      // the refund lands in the balance
           await load();
         } catch (err) { toast(err.message, 'error'); load(); }

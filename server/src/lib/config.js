@@ -35,6 +35,40 @@ export const CANCEL_WINDOW_MS = 60 * 1000;          // 1 minute
 export const cancelWindowOpen = (roomSetAt, createdAt, at = Date.now()) =>
   at - (roomSetAt || createdAt || 0) <= CANCEL_WINDOW_MS;
 
+/* ---------- cancellation ----------
+   A fixed list, so the reason can be validated, counted, and shown back to
+   the other player rather than being free text nobody reads. */
+export const CANCEL_REASONS = [
+  { id: 'no_room',      label: 'Host never shared the room code' },
+  { id: 'opponent_afk', label: 'Opponent is not responding' },
+  { id: 'wrong_amount', label: 'Wrong amount entered' },
+  { id: 'changed_mind', label: 'No longer want to play' },
+  { id: 'app_issue',    label: 'Ludo app or network problem' },
+  { id: 'other',        label: 'Something else' },
+];
+export const CANCEL_REASON_IDS = CANCEL_REASONS.map(r => r.id);
+
+/** Who may call off a battle, and whose stake comes back.
+
+    Before anyone joins, only the host can cancel and only the host has staked.
+    Once the host accepts but no room code exists, the match is stuck: either
+    player may cancel and BOTH stakes are returned, because both were taken.
+    After the room code goes up it has to be played and reported. */
+export function cancelPlan(status, { isCreator, isAcceptor, creatorId, acceptorId }) {
+  if (!isCreator && !isAcceptor) return { allowed: false, error: 'FORBIDDEN' };
+
+  if (status === 'open' || status === 'requested') {
+    if (!isCreator) return { allowed: false, error: 'HOSTONLY' };
+    return { allowed: true, refund: [creatorId].filter(id => id != null) };
+  }
+  if (status === 'waiting') {
+    return { allowed: true, refund: [creatorId, acceptorId].filter(id => id != null) };
+  }
+  return { allowed: false, error: 'CLOSED' };
+}
+export const cancelReasonLabel = id =>
+  (CANCEL_REASONS.find(r => r.id === id) || {}).label || 'No reason given';
+
 /* A single unanswered result claim parks the battle in dispute. If the
    opponent has still not reported when this elapses, the lone claim is
    taken at face value and the battle settles automatically. */

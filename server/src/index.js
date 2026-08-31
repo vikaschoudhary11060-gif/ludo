@@ -26,7 +26,7 @@ import { userRouter as paymentUserRoutes } from './routes/payments.js';
 import { attachRealtime } from './realtime.js';
 import { startSettlementSweeper } from './lib/settle-sweeper.js';
 import { MODES, DEPOSIT, WITHDRAW, BONUS_PER, BONUS_AMOUNT,
-         CANCEL_WINDOW_MS, CLAIM_GRACE_MS, IS_DEV, commissionFor } from './lib/config.js';
+         CANCEL_WINDOW_MS, CLAIM_GRACE_MS, IS_DEV, commissionFor, CANCEL_REASONS } from './lib/config.js';
 import { getSettings, connect, ensureSeed } from './lib/db.js';
 
 const app = express();
@@ -74,6 +74,7 @@ app.get('/api/config', async (_req, res) => {
     // The simulated top-up only exists off production; the UI hides it otherwise.
     simulatedDeposit: IS_DEV,
     cancelWindowMs: CANCEL_WINDOW_MS, claimGraceMs: CLAIM_GRACE_MS,
+    cancelReasons: CANCEL_REASONS,
   });
 });
 

@@ -9,7 +9,8 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import { col, now, credit, debit, spendable, notify, getSettings, withTransaction } from '../lib/db.js';
 import { requireAuth, optionalAuth } from '../lib/auth.js';
-import { MODES, CLAIM_GRACE_MS, GRACE_LABEL, CANCEL_LABEL, cancelWindowOpen, prizeFor } from '../lib/config.js';
+import { MODES, CLAIM_GRACE_MS, GRACE_LABEL, CANCEL_LABEL, cancelWindowOpen, prizeFor,
+         CANCEL_REASON_IDS, cancelReasonLabel, cancelPlan } from '../lib/config.js';
 import { payReferralCuts } from '../lib/settlement.js';
 import { isPlayer, shape, fetchBattles, fetchBattle } from '../lib/battle-view.js';
 
@@ -212,30 +213,69 @@ router.post('/:id/cancel-request', requireAuth, async (req, res) => {
   res.json({ ok: true, battle });
 });
 
-/* POST /api/battles/:id/cancel (Host cancels battle) */
+/* POST /api/battles/:id/cancel  { reason }
+
+   Before an opponent joins, only the host can call this off. Once both have
+   staked but no room code exists yet, EITHER player may — otherwise a host who
+   walks away without sharing a code leaves the opponent's stake locked until
+   an admin steps in. Both stakes come back in that case. */
 router.post('/:id/cancel', requireAuth, async (req, res) => {
   const id = req.params.id;
+  const parsed = z.object({ reason: z.enum(CANCEL_REASON_IDS).optional() }).safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: 'Choose a reason for cancelling.' });
+  const reason = parsed.data.reason || 'other';
+
+  const notes = [];
+  let cancelledBattle = null;
   try {
     await withTransaction(async session => {
+      notes.length = 0;                       // cleared per attempt, see /result
       const b = await col('battles').findOne({ id }, { session });
       if (!b) throw new Error('NOTFOUND');
-      if (b.creator_id !== req.user.id) throw new Error('FORBIDDEN');
-      if (!['open', 'requested'].includes(b.status)) throw new Error('CLOSED');
-      // Claim the cancellation first so a double tap cannot refund twice.
+
+      const isCreator = b.creator_id === req.user.id;
+      const isAcceptor = b.acceptor_id === req.user.id;
+      const stuckWaiting = b.status === 'waiting';
+
+      const plan = cancelPlan(b.status, {
+        isCreator, isAcceptor, creatorId: b.creator_id, acceptorId: b.acceptor_id,
+      });
+      if (!plan.allowed) throw new Error(plan.error);
+
       const cancelled = await col('battles').updateOne(
-        { id, status: { $in: ['open', 'requested'] } },
-        { $set: { status: 'cancelled', settled_at: now() } }, { session });
+        { id, status: b.status },
+        { $set: { status: 'cancelled', settled_at: now(),
+                  cancel_reason: reason, cancelled_by: req.user.id } }, { session });
       if (cancelled.matchedCount === 0) throw new Error('CLOSED');
-      await credit(req.user.id, 'deposit', b.amount, 'Battle cancelled — refund', id, 'success', session);
+
+      // Refund exactly who the plan says staked.
+      for (const uid of plan.refund) {
+        await credit(uid, 'deposit', b.amount, 'Battle cancelled — refund', id, 'success', session);
+      }
+
+      const other = isCreator ? b.acceptor_id : b.creator_id;
+      if (other && stuckWaiting) {
+        notes.push([other, 'Battle cancelled',
+          `Your ₹${b.amount} battle was cancelled — ${cancelReasonLabel(reason)}. Your entry fee was refunded.`]);
+      }
+      cancelledBattle = b;
     });
   } catch (e) {
-    const map = { NOTFOUND: [404, 'Battle not found.'], FORBIDDEN: [403, 'Only the creator can cancel.'],
-      CLOSED: [409, 'This battle can no longer be cancelled.'] };
+    const map = {
+      NOTFOUND: [404, 'Battle not found.'],
+      FORBIDDEN: [403, 'You are not in this battle.'],
+      HOSTONLY: [403, 'Only the host can cancel before the battle starts.'],
+      CLOSED: [409, 'This battle can no longer be cancelled.'],
+    };
     if (map[e.message]) return res.status(map[e.message][0]).json({ error: map[e.message][1] });
     throw e;
   }
-  req.app.get('io')?.emit('battle:removed', { id });
-  res.json({ ok: true });
+  for (const [uid, title, body] of notes) await notify(uid, title, body);
+  const io = req.app.get('io');
+  io?.emit('battle:removed', { id });
+  if (cancelledBattle) io?.to(`battle:${id}`).emit('battle:updated',
+    shape(await fetchBattle(id), req.user.id));
+  res.json({ ok: true, reason });
 });
 
 /* POST /api/battles/:id/reject (Legacy alias for reject-request) */

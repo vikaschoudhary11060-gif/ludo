@@ -13,6 +13,7 @@ import {
   cancelWindowOpen, CANCEL_WINDOW_MS, CLAIM_GRACE_MS,
   payoutFor, prizeFor, commissionFor, SETTINGS_DEFAULTS,
   COMMISSION_THRESHOLD, COMMISSION_UNDER, COMMISSION_FROM,
+  cancelPlan, CANCEL_REASONS, CANCEL_REASON_IDS, cancelReasonLabel,
 } from '../server/src/lib/config.js';
 import { decideLoneClaim } from '../server/src/lib/settle-sweeper.js';
 
@@ -258,5 +259,84 @@ test('prize at each tier', async t => {
   await t.test('payoutFor still takes an explicit rate', () => {
     assert.equal(payoutFor(500, 0.05), 950);
     assert.equal(payoutFor(500, 0), 1000);
+  });
+});
+
+/* ---------------- cancelling ---------------- */
+
+test('who may cancel, and who gets refunded', async t => {
+  const HOST = 1, GUEST = 2;
+  const asHost  = { isCreator: true,  isAcceptor: false, creatorId: HOST, acceptorId: GUEST };
+  const asGuest = { isCreator: false, isAcceptor: true,  creatorId: HOST, acceptorId: GUEST };
+
+  await t.test('before anyone joins, only the host cancels and only the host is refunded', () => {
+    const p = cancelPlan('open', { ...asHost, acceptorId: null });
+    assert.equal(p.allowed, true);
+    assert.deepEqual(p.refund, [HOST], 'the opponent has not staked yet');
+  });
+
+  await t.test('a pending request is still the host\'s to cancel', () => {
+    const p = cancelPlan('requested', asHost);
+    assert.equal(p.allowed, true);
+    assert.deepEqual(p.refund, [HOST], 'the requester is only debited once accepted');
+  });
+
+  await t.test('a would-be opponent cannot cancel the host\'s battle', () => {
+    const p = cancelPlan('open', asGuest);
+    assert.equal(p.allowed, false);
+    assert.equal(p.error, 'HOSTONLY');
+  });
+
+  await t.test('with no room code, EITHER player can call it off', () => {
+    for (const who of [asHost, asGuest]) {
+      const p = cancelPlan('waiting', who);
+      assert.equal(p.allowed, true, 'a stuck battle must not trap a stake');
+      assert.deepEqual(p.refund, [HOST, GUEST], 'both staked, so both are refunded');
+    }
+  });
+
+  await t.test('once the room code is up, neither can cancel from the list', () => {
+    for (const status of ['running', 'completed', 'cancelled', 'disputed']) {
+      for (const who of [asHost, asGuest]) {
+        const p = cancelPlan(status, who);
+        assert.equal(p.allowed, false, `${status} must not be cancellable`);
+        assert.equal(p.error, 'CLOSED');
+      }
+    }
+  });
+
+  await t.test('a stranger is refused outright', () => {
+    const p = cancelPlan('waiting', { isCreator: false, isAcceptor: false, creatorId: HOST, acceptorId: GUEST });
+    assert.equal(p.allowed, false);
+    assert.equal(p.error, 'FORBIDDEN');
+  });
+
+  await t.test('a refund list never contains a missing player', () => {
+    const p = cancelPlan('waiting', { isCreator: true, isAcceptor: false, creatorId: HOST, acceptorId: null });
+    assert.deepEqual(p.refund, [HOST]);
+  });
+});
+
+test('cancel reasons', async t => {
+  await t.test('every reason has an id and a label', () => {
+    assert.ok(CANCEL_REASONS.length >= 3);
+    for (const r of CANCEL_REASONS) {
+      assert.equal(typeof r.id, 'string');
+      assert.ok(r.id.length > 0 && r.label.length > 0);
+    }
+  });
+
+  await t.test('ids are unique', () => {
+    assert.equal(new Set(CANCEL_REASON_IDS).size, CANCEL_REASON_IDS.length);
+  });
+
+  await t.test('covers the stuck-battle case the rules depend on', () => {
+    assert.ok(CANCEL_REASON_IDS.includes('no_room'), 'players need a way to say the code never came');
+  });
+
+  await t.test('an unknown id reads back as a sentence, not undefined', () => {
+    assert.equal(cancelReasonLabel('no_room'), 'Host never shared the room code');
+    assert.equal(cancelReasonLabel('nonsense'), 'No reason given');
+    assert.equal(cancelReasonLabel(undefined), 'No reason given');
   });
 });
