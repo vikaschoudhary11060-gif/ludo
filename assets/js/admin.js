@@ -1110,18 +1110,6 @@
         .catch(err => toast(err.message, 'error'));
       e.target.value = ''; return;
     }
-    if (e.target.id === 'qr-file') {
-      const file = e.target.files[0]; if (!file) return;
-      const fd = new FormData(); fd.append('file', file);
-      fetch(API + '/admin/deposit-qr', { method: 'POST', headers: { Authorization: 'Bearer ' + TOKEN }, body: fd })
-        .then(r => r.json()).then(d => {
-          if (d.error) throw new Error(d.error);
-          $('#qr-preview').src = IMG + d.url; $('#qr-preview').classList.remove('hidden');
-          toast('QR uploaded', 'success');
-        }).catch(err => toast(err.message, 'error'));
-      e.target.value = '';
-      return;
-    }
     if (e.target.id === 'ct-file' && openThread) {
       const file = e.target.files[0];
       if (!file) return;

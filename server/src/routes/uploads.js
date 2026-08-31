@@ -116,4 +116,4 @@ router.post('/ekyc', requireAuth, (req, res) => {
   });
 });
 
-export { router as default, ROOT as UPLOAD_ROOT };
+export { router as default, UPLOAD_ROOT };

@@ -8,7 +8,7 @@ markup is crawlable and there is no layout shift on load.
 
     python3 build.py
 """
-import pathlib, re, sys
+import pathlib, re, sys, hashlib, time
 
 ROOT = pathlib.Path(__file__).parent
 FRAG = ROOT / 'src' / 'pages'
@@ -259,7 +259,7 @@ SHELL = '''<!doctype html>
 <link rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Saira+Semi+Condensed:wght@600;700&display=swap">
 <link rel="stylesheet" href="assets/css/app.css">
-<script>window.KHELBRO_API = "{api}";
+<script>window.KHELBRO_API = "{api}"; window.KHELBRO_BUILD = "{build}";
 // Runs before paint so the theme never flashes.
 (function(){{try{{var t=localStorage.getItem('khelbro.theme')||
 (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
@@ -430,8 +430,56 @@ def jsonld_for(slug):
     return "\n".join(_ld(b) for b in blocks)
 
 
+
+def build_id():
+    """A short id over everything the browser caches.
+
+    The service worker only updates when sw.js itself changes, so a deploy that
+    touched only app.js used to leave every returning visitor on the old code.
+    Hashing the shipped assets means any real change produces a new id, and an
+    unchanged rebuild produces the same one (no pointless cache churn)."""
+    h = hashlib.sha256()
+    for f in sorted(ROOT.glob('assets/js/*.js')) + sorted(ROOT.glob('assets/css/*.css')):
+        if f.exists():
+            h.update(f.name.encode())
+            h.update(f.read_bytes())
+    # The worker's own logic counts too — with its VERSION line stripped, since
+    # that line is what this id gets written into.
+    sw = ROOT / 'sw.js'
+    if sw.exists():
+        h.update(b'sw.js')
+        h.update(re.sub(r"const VERSION = '[^']*';", '', sw.read_text(encoding='utf-8')).encode())
+    return h.hexdigest()[:12]
+
+
+def write_version_file(bid):
+    """A tiny always-fresh endpoint the running app polls to see if it is stale.
+
+    The service-worker update dance is not enough on its own: it never runs
+    where service workers are unavailable, and it depends on event timing we
+    do not control. Comparing this id against the one baked into the page is
+    deterministic."""
+    (ROOT / 'version.json').write_text(
+        '{"build": "%s"}\n' % bid, encoding='utf-8')
+
+
+def stamp_service_worker(bid):
+    """Write the build id into sw.js so a deploy invalidates the old cache."""
+    sw = ROOT / 'sw.js'
+    if not sw.exists():
+        return None
+    text = sw.read_text(encoding='utf-8')
+    new = re.sub(r"const VERSION = '[^']*';", f"const VERSION = 'khelbro-{bid}';", text, count=1)
+    if new != text:
+        sw.write_text(new, encoding='utf-8')
+    return bid
+
+
 def build():
     hdr, ftr = header(), footer()
+    bid = build_id()
+    stamp_service_worker(bid)
+    write_version_file(bid)
     built = []
     for slug, title, desc, script in PAGES:
         frag = FRAG / slug
@@ -444,12 +492,13 @@ def build():
             for f in script.split(',') if f.strip())
         html = SHELL.format(
             title=title, desc=desc, slug=slug, site=SITE, base=BASE_URL,
-            twitter=TWITTER, jsonld=jsonld_for(slug), api=API_URL,
+            twitter=TWITTER, jsonld=jsonld_for(slug), api=API_URL, build=bid,
             tagline=TAGLINE, header=hdr, footer=ftr,
             content=content, pagescript=page_script)
         (ROOT / slug).write_text(html, encoding='utf-8')
         built.append(slug)
         print(f'  built {slug:20s} {len(html):>7,} bytes')
+    print(f'\n  build id {bid} (stamped into sw.js)')
     return built
 
 

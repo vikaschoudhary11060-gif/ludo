@@ -5,9 +5,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MongoClient } from '../server/node_modules/mongodb/lib/index.js';
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://vikaschoudhary11060_db_user:MbejATQnH8OiK4CY@cluster0.ouvpidm.mongodb.net/khelbro?retryWrites=true&w=majority';
+/* Needs a live database. Set MONGO_URI to run it:
+     MONGO_URI='mongodb+srv://…' npm run test:integration
+   The connection string must never be hardcoded here — this file is committed,
+   so anything written into it is public to everyone with repository access. */
+const MONGO_URI = process.env.MONGO_URI;
 
-test('Referral System End-to-End Test Suite', async t => {
+test('Referral System End-to-End Test Suite', { skip: MONGO_URI ? false : 'set MONGO_URI to run' }, async t => {
   const client = new MongoClient(MONGO_URI);
   await client.connect();
   const db = client.db('khelbro');

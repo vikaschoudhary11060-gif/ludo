@@ -5,11 +5,15 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
-process.env.MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://vikaschoudhary11060_db_user:MbejATQnH8OiK4CY@cluster0.ouvpidm.mongodb.net/khelbro?retryWrites=true&w=majority';
+/* Needs a live database. Set MONGO_URI to run it:
+     MONGO_URI='mongodb+srv://…' npm run test:integration
+   The connection string must never be hardcoded here — this file is committed,
+   so anything written into it is public to everyone with repository access. */
+const HAS_DB = !!process.env.MONGO_URI;
 import { connect, col } from '../server/src/lib/db.js';
 import { saveFile, getFile, UPLOAD_ROOT } from '../server/src/lib/storage.js';
 
-test('Persistent Image Storage Test Suite', async t => {
+test('Persistent Image Storage Test Suite', { skip: HAS_DB ? false : 'set MONGO_URI to run' }, async t => {
   await connect();
 
   const testBuffer = Buffer.from('test-image-content-bytes-123456');

@@ -16,6 +16,12 @@
   let cancelWindowMs = 60 * 1000, claimGraceMs = 10 * 60 * 1000;
   let tickTimer = null;
 
+  /* Status lines are cosmetic. Writing one must never be able to fail the
+     action it is describing — a missing #proof-status threw on the first line
+     of the submit handler, and threw again inside its own catch, so no result
+     could be submitted at all. */
+  const setText = (sel, text) => { const el = $(sel); if (el) el.textContent = text; };
+
   const mmss = ms => {
     const t = Math.max(0, Math.ceil(ms / 1000));
     return t < 60 ? `${t}s` : `${Math.floor(t / 60)}m ${String(t % 60).padStart(2, '0')}s`;
@@ -340,10 +346,10 @@
       try {
         let proofUrl;
         if (proofFile) {
-          $('#proof-status').textContent = 'Uploading screenshot…';
+          setText('#proof-status', 'Uploading screenshot…');
           const up = await Api.uploads.proof(proofFile);
           proofUrl = up.url;
-          $('#proof-status').textContent = 'Screenshot uploaded.';
+          setText('#proof-status', 'Screenshot uploaded.');
         }
         const res = await Api.battles.result(id, chosen, {
           proof: proofUrl,
@@ -359,7 +365,7 @@
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } catch (err) {
         toast(err.message, 'error');
-        $('#proof-status').textContent = 'Upload failed. Try again.';
+        setText('#proof-status', err.message || 'Upload failed. Try again.');
       } finally {
         btn.disabled = false; btn.textContent = 'Submit result';
       }

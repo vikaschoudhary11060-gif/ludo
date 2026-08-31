@@ -42,7 +42,7 @@
 <link rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Saira+Semi+Condensed:wght@600;700&display=swap">
 <link rel="stylesheet" href="assets/css/app.css">
-<script>window.KHELBRO_API = "https://ludo-qu3q.onrender.com";
+<script>window.KHELBRO_API = "https://ludo-qu3q.onrender.com"; window.KHELBRO_BUILD = "4147dd994ae5";
 // Runs before paint so the theme never flashes.
 (function(){try{var t=localStorage.getItem('khelbro.theme')||
 (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
@@ -242,7 +242,8 @@ var l=localStorage.getItem('khelbro.lang');if(l)document.documentElement.lang=l;
             <label class="pill-label mb-1.5 block text-muted-dark" for="proof">Screenshot (required for a win)</label>
             <input class="field !h-auto py-2.5 file:mr-3 file:rounded-md file:border-0 file:bg-brand file:px-3 file:py-1.5 file:text-meta file:font-bold file:text-white"
                    id="proof" type="file" accept="image/*">
-            <p class="mt-1 text-meta text-muted">Stored locally in this demo — nothing is uploaded.</p>
+            <p class="mt-1 text-meta text-muted">Sent to our team with your result, so a dispute can be checked.</p>
+            <p class="mt-1 text-meta font-medium text-muted-dark" id="proof-status" role="status" aria-live="polite"></p>
           </div>
 
           <div class="mt-4" id="cancel-wrap" hidden>
