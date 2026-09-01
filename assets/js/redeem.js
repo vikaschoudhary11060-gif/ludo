@@ -1,4 +1,4 @@
-/* Redeem page — move referral balance to deposit balance */
+/* Redeem page — move referral earnings into withdrawable winnings */
 (function () {
   'use strict';
   const K = window.Khelbro;
@@ -14,7 +14,7 @@
     btn?.addEventListener('click', e => busy(e.currentTarget, 'Redeeming', async () => {
       try {
         const res = await Api.wallet.redeemReferral();
-        toast(`${money(res.redeemed)} successfully redeemed into your deposit balance! 🎁`, 'success');
+        toast(`${money(res.redeemed)} redeemed into your winnings! 🎁`, 'success');
         btn.disabled = true;
         await K.refresh();
         K.paint();

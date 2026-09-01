@@ -64,7 +64,7 @@
       redeemBtn.addEventListener('click', e => busy(e.currentTarget, 'Redeeming', async () => {
         try {
           const res = await Api.wallet.redeemReferral();
-          toast(`${money(res.redeemed)} added to your deposit balance! 🎁`, 'success');
+          toast(`${money(res.redeemed)} added to your winnings! 🎁`, 'success');
           if (unredeemedEl) unredeemedEl.textContent = money(0);
           redeemBtn.disabled = true;
           await K.refresh();

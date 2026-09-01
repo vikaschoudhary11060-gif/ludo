@@ -84,18 +84,24 @@ export async function credit(userId, bucket, amount, note, refId = null, status 
   await insertTx({ user_id: userId, type: 'credit', bucket, amount, note, status, ref_id: refId }, session);
 }
 
-/** Spend deposit first, then winnings. Returns false if short.
+/** Spend deposit first, then winnings.
+
+    Returns null when the wallet is short, otherwise `{ deposit, winnings }`
+    naming how much came from each bucket. Callers record that split so a
+    refund can put the money back where it came from — crediting it all to
+    deposit would quietly convert a player's withdrawable winnings into
+    play-only balance.
 
     The balance guard is repeated in the update filter, so the deduction is
     atomic even if two requests read the same balance: whichever lands second
     matches nothing and is reported as short rather than going negative. */
 export async function debit(userId, amount, note, refId = null, session = null) {
-  if (!Number.isFinite(amount) || amount <= 0) return false;
+  if (!Number.isFinite(amount) || amount <= 0) return null;
   const opts = session ? { session } : undefined;
   const w = await col('wallets').findOne({ user_id: userId }, opts);
-  if (!w) return false;
+  if (!w) return null;
   const deposit = w.deposit || 0, winnings = w.winnings || 0;
-  if (deposit + winnings < amount) return false;
+  if (deposit + winnings < amount) return null;
 
   const fromDeposit = Math.min(deposit, amount);
   const fromWinnings = amount - fromDeposit;
@@ -106,11 +112,11 @@ export async function debit(userId, amount, note, refId = null, session = null) 
   if (fromWinnings > 0) filter.winnings = { $gte: fromWinnings };
   const res = await col('wallets').updateOne(filter,
     { $inc: { deposit: -fromDeposit, winnings: -fromWinnings } }, opts);
-  if (res.matchedCount === 0) return false;      // balance moved under us
+  if (res.matchedCount === 0) return null;       // balance moved under us
 
   if (fromDeposit) await insertTx({ user_id: userId, type: 'debit', bucket: 'deposit', amount: fromDeposit, note, ref_id: refId }, session);
   if (fromWinnings) await insertTx({ user_id: userId, type: 'debit', bucket: 'winnings', amount: fromWinnings, note, ref_id: refId }, session);
-  return true;
+  return { deposit: fromDeposit, winnings: fromWinnings };
 }
 
 /* ---------- notifications (also pushes to the device) ---------- */

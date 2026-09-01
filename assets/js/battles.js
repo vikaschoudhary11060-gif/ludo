@@ -16,6 +16,12 @@
 
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+  /* What the winner takes: both stakes less the commission for that stake.
+     K.prizeFor applies the same tiers the server settles with, so the number
+     shown here is the number that gets paid. */
+  const prizeLine = (amount, layout = 'block') =>
+    `<span class="${layout} text-[8.25px] font-bold uppercase text-cta-deep">${t('Win')} ${money(K.prizeFor(amount))}</span>`;
+
   function openCard(b) {
     const me = K.state.user;
     const mine = me && b.creator && b.creator.id === me.id;
@@ -37,6 +43,7 @@
         <span class="shrink-0 text-right leading-tight">
           <span class="block text-[8.25px] font-medium uppercase text-accent-fee">Entry fee</span>
           <span class="block text-[13.5px] font-black text-ink">${money(b.amount)}</span>
+          ${prizeLine(b.amount)}
         </span>
         ${action}
       </div>
@@ -46,7 +53,10 @@
   const runningCard = b => `<li class="rounded-[5px] border border-line bg-surface" data-battle="${b.id}">
       <div class="flex h-[30px] items-center justify-between border-b border-accent-hair px-2.5">
         <span class="text-[9.75px] font-bold uppercase text-ink">${t('Playing for')}</span>
-        <span class="text-[13.5px] font-black text-ink">${money(b.amount)}</span>
+        <span class="flex items-baseline gap-1.5">
+          <span class="text-[13.5px] font-black text-ink">${money(b.amount)}</span>
+          ${prizeLine(b.amount, 'inline')}
+        </span>
       </div>
       <div class="flex items-center gap-2 px-2.5 py-2.5">
         ${avatar(b.creator.name, 'bg-ludo-red')}
@@ -118,17 +128,22 @@
     if (b.status === 'requested') {
       return isCreator
         ? pill('bg-cta text-white hover:brightness-110',
-            `data-mine-start="${b.id}"`, 'Start the battle', '<span>Start</span>') +
+            `data-mine-start="${b.id}"`, 'Accept this opponent and start', '<span>Start</span>') +
           pill('border border-live/60 text-live hover:bg-live hover:text-white',
             `data-mine-reject="${b.id}"`, 'Reject this opponent', '<span>Reject</span>')
         : pill('border border-live/60 text-live hover:bg-live hover:text-white',
             `data-mine-withdraw="${b.id}"`, 'Withdraw your join request', '<span>Withdraw</span>');
     }
     if (b.status === 'waiting') {
-      // No room code yet: whoever is stuck can call it off and get refunded.
-      return pill('border border-live/60 text-live hover:bg-live hover:text-white',
-        `data-mine-cancel="${b.id}"`, 'Cancel — no room code shared',
-        `${CANCEL_ICON}<span>Cancel</span>`);
+      /* Accepted, no room code yet. Start opens the battle — where the host
+         sets the code and the opponent waits for it. Either side can still
+         call it off, since a code that never arrives would strand the stake. */
+      return `<a class="inline-flex h-[32px] shrink-0 items-center gap-1.5 rounded-[5px] bg-cta px-3
+                        text-[10.5px] font-bold uppercase text-white transition hover:brightness-110"
+                 href="battle.html?id=${b.id}" aria-label="Start the ${money(b.amount)} battle">Start</a>` +
+        pill('border border-live/60 text-live hover:bg-live hover:text-white',
+          `data-mine-cancel="${b.id}"`, 'Cancel — no room code shared',
+          `${CANCEL_ICON}<span>Cancel</span>`);
     }
     return '';
   }
@@ -159,6 +174,7 @@
     return `<tr class="border-t border-accent-hair" data-battle="${b.id}">
       <td class="px-2.5 pb-1 pt-2 align-middle">
         <span class="block font-black text-ink">${money(b.amount)}</span>
+        ${prizeLine(b.amount)}
         <span class="block text-[9px] font-bold uppercase text-muted">${modeTag}</span>
       </td>
       <td class="px-2.5 pb-1 pt-2 align-middle">${statusCell(b)}</td>
@@ -170,11 +186,65 @@
           <a class="inline-flex h-[32px] shrink-0 items-center gap-1.5 rounded-[5px] border border-line px-3
                     text-[10.5px] font-bold uppercase text-muted transition
                     hover:border-brand hover:text-brand focus-visible:border-brand focus-visible:text-brand"
-             href="battle.html?id=${b.id}" aria-label="Open details for the ${money(b.amount)} battle"
-             title="Open battle details">${DETAILS_ICON}<span>Details</span></a>
+             href="battle.html?id=${b.id}" aria-label="View the ${money(b.amount)} battle"
+             title="View battle">${DETAILS_ICON}<span>View</span></a>
         </span>
       </td>
     </tr>`;
+  }
+
+  /* Ask why, from the server's own list. Resolves to a reason id, or null if
+     the player backs out. Built here rather than in the page so it can sit on
+     top of whatever row was tapped. */
+  function askCancelReason() {
+    const reasons = (K.state.config && K.state.config.cancelReasons) || [
+      { id: 'no_room', label: 'Host never shared the room code' },
+      { id: 'opponent_afk', label: 'Opponent is not responding' },
+      { id: 'changed_mind', label: 'No longer want to play' },
+      { id: 'other', label: 'Something else' },
+    ];
+
+    return new Promise(resolve => {
+      const host = document.createElement('div');
+      host.className = 'fixed inset-0 z-[90] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4';
+      host.setAttribute('role', 'dialog');
+      host.setAttribute('aria-modal', 'true');
+      host.setAttribute('aria-label', 'Why are you cancelling?');
+      host.innerHTML = `
+        <div class="w-full max-w-app rounded-t-card bg-surface p-4 sm:rounded-card">
+          <p class="font-display text-h3 text-ink">Why are you cancelling?</p>
+          <p class="mt-1 text-[11.25px] text-muted">Your entry fee is refunded either way.</p>
+          <div class="mt-3 space-y-1.5">
+            ${reasons.map((r, i) => `
+              <label class="tile-row cursor-pointer">
+                <input class="h-4 w-4 accent-brand" type="radio" name="cancel-reason"
+                       value="${esc(r.id)}"${i === 0 ? ' checked' : ''}>
+                <span class="tile-row__label text-[12px]">${esc(r.label)}</span>
+              </label>`).join('')}
+          </div>
+          <div class="mt-4 flex gap-2">
+            <button class="btn btn-outline flex-1" type="button" data-x>Keep battle</button>
+            <button class="btn btn-primary flex-1" type="button" data-ok>Cancel battle</button>
+          </div>
+        </div>`;
+
+      const close = value => {
+        document.removeEventListener('keydown', onKey);
+        host.remove();
+        resolve(value);
+      };
+      const onKey = ev => { if (ev.key === 'Escape') close(null); };
+
+      host.querySelector('[data-ok]').addEventListener('click', () =>
+        close(host.querySelector('input[name="cancel-reason"]:checked')?.value || 'other'));
+      host.querySelector('[data-x]').addEventListener('click', () => close(null));
+      // A tap on the backdrop means "not now", not a silent cancellation.
+      host.addEventListener('click', ev => { if (ev.target === host) close(null); });
+      document.addEventListener('keydown', onKey);
+
+      document.body.appendChild(host);
+      host.querySelector('input')?.focus();
+    });
   }
 
   function renderMine() {
@@ -359,9 +429,13 @@
         if (!K.state.user) { toast('Sign in to play', 'error'); location.href = 'login.html'; return; }
         await busy(play, '', async () => {
           try {
-            const { battle } = await Api.battles.accept(play.dataset.play);
-            toast('Request sent to host — waiting for acceptance', 'info');
-            location.href = 'battle.html?id=' + battle.id;
+            await Api.battles.accept(play.dataset.play);
+            toast('Request sent — waiting for the host to accept', 'info');
+            /* Stay put. The request appears in My Battles as Requested, with
+               a Cancel; the battle only opens when they choose to open it. */
+            await K.refresh(); K.paint();
+            await load();
+            $('#mine-section')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           } catch (err) { toast(err.message, 'error'); load(); }
         });
       }

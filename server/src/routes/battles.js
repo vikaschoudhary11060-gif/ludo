@@ -11,12 +11,37 @@ import { col, now, credit, debit, spendable, notify, getSettings, withTransactio
 import { requireAuth, optionalAuth } from '../lib/auth.js';
 import { MODES, CLAIM_GRACE_MS, GRACE_LABEL, CANCEL_LABEL, cancelWindowOpen, prizeFor,
          CANCEL_REASON_IDS, cancelReasonLabel, cancelPlan } from '../lib/config.js';
-import { payReferralCuts } from '../lib/settlement.js';
+import { payReferralCuts, refundStake } from '../lib/settlement.js';
 import { isPlayer, shape, fetchBattles, fetchBattle } from '../lib/battle-view.js';
 
 const router = SafeRouter();
 const newId = () => crypto.randomBytes(6).toString('hex');
 
+
+/* Tell everyone who has a stake in a battle that it changed, wherever they are.
+
+   Emitting only to `battle:<id>` reached the two detail pages and nobody else,
+   so a player sitting on the lobby had to refresh to see the other side cancel,
+   accept or reject.
+
+   Each recipient is shaped for themselves rather than sharing one payload:
+   shape() redacts by viewer, and broadcasting one person's view to another is
+   how a redaction quietly stops redacting.
+
+   `also` carries players the battle no longer names — a rejected or withdrawn
+   opponent has already been cleared off the document by the time we emit, and
+   they are exactly the person who needs to hear about it. */
+function emitBattle(req, b, also = []) {
+  const io = req.app.get('io');
+  if (!io || !b) return;
+  const recipients = new Set(
+    [b.creator_id, b.acceptor_id, ...also].filter(uid => uid != null));
+  for (const uid of recipients) {
+    // Every socket in `battle:<id>` is a participant (battle:watch enforces it)
+    // and so is already in its own user room — no separate room emit needed.
+    io.to(`user:${uid}`).emit('battle:updated', shape(b, uid));
+  }
+}
 
 /* GET /api/battles?mode=lite&status=open */
 router.get('/', optionalAuth, async (req, res) => {
@@ -63,10 +88,13 @@ router.post('/', requireAuth, async (req, res) => {
       if (openCount >= settings.battle_limit) throw new Error('LIMIT');
       const dupe = await col('battles').findOne({ creator_id: req.user.id, amount, status: { $in: ['open', 'requested'] } }, { session });
       if (dupe) throw new Error('DUPLICATE');
-      if (!(await debit(req.user.id, amount, 'Battle stake', id, session))) throw new Error('INSUFFICIENT');
+      const stake = await debit(req.user.id, amount, 'Battle stake', id, session);
+      if (!stake) throw new Error('INSUFFICIENT');
       await col('battles').insertOne({
         id, mode, amount, status: 'open', creator_id: req.user.id, acceptor_id: null,
         room_code: null, winner_id: null, payout: null, created_at: now(), settled_at: null,
+        // Remembered so a refund returns the money to the same buckets.
+        creator_stake: stake, acceptor_stake: null,
       }, { session });
     });
   } catch (e) {
@@ -109,9 +137,10 @@ router.post('/:id/accept', requireAuth, async (req, res) => {
     throw e;
   }
   await notify(creatorId, 'Opponent request', `${req.user.name} wants to join your ₹${amount} battle.`);
-  const battle = shape(await fetchBattle(id), req.user.id);
+  const fresh = await fetchBattle(id);
+  const battle = shape(fresh, req.user.id);
+  emitBattle(req, fresh);
   const io = req.app.get('io');
-  io?.to(`battle:${id}`).emit('battle:updated', battle);
   io?.emit('battle:removed', { id });
   res.json({ battle });
 });
@@ -131,7 +160,10 @@ router.post('/:id/accept-request', requireAuth, async (req, res) => {
       const claimed = await col('battles').updateOne({ id, status: 'requested' },
         { $set: { status: 'waiting' } }, { session });
       if (claimed.matchedCount === 0) throw new Error('WRONGSTATE');
-      if (!(await debit(b.acceptor_id, b.amount, 'Battle stake', id, session))) throw new Error('OPPONENT_INSUFFICIENT');
+      const stake = await debit(b.acceptor_id, b.amount, 'Battle stake', id, session);
+      if (!stake) throw new Error('OPPONENT_INSUFFICIENT');
+      await col('battles').updateOne({ id, status: 'waiting' },
+        { $set: { acceptor_stake: stake } }, { session });
       acceptorId = b.acceptor_id; amount = b.amount;
     });
   } catch (e) {
@@ -146,9 +178,10 @@ router.post('/:id/accept-request', requireAuth, async (req, res) => {
     throw e;
   }
   await notify(acceptorId, 'Request accepted!', `Your request for the ₹${amount} battle was accepted. Waiting for room code.`);
-  const battle = shape(await fetchBattle(id), req.user.id);
+  const fresh = await fetchBattle(id);
+  const battle = shape(fresh, req.user.id);
+  emitBattle(req, fresh);
   const io = req.app.get('io');
-  io?.to(`battle:${id}`).emit('battle:updated', battle);
   res.json({ battle });
 });
 
@@ -168,7 +201,7 @@ const rejectRequestHandler = async (req, res) => {
         { $set: { acceptor_id: null, status: 'open' } }, { session });
       if (rejected.matchedCount === 0) throw new Error('WRONGSTATE');
       if (b.status === 'waiting' && b.acceptor_id) {
-        await credit(b.acceptor_id, 'deposit', b.amount, 'Challenge rejected — refund', id, 'success', session);
+        await refundStake(session, b, b.acceptor_id, 'Challenge rejected — refund');
       }
       acceptorId = b.acceptor_id; amount = b.amount;
     });
@@ -179,9 +212,10 @@ const rejectRequestHandler = async (req, res) => {
     throw e;
   }
   if (acceptorId) await notify(acceptorId, 'Request declined', `${req.user.name} declined your request for the ₹${amount} battle.`);
-  const battle = shape(await fetchBattle(id), req.user.id);
+  const fresh = await fetchBattle(id);
+  const battle = shape(fresh, req.user.id);
+  emitBattle(req, fresh, [acceptorId]);          // they are no longer on the doc
   const io = req.app.get('io');
-  io?.to(`battle:${id}`).emit('battle:updated', battle);
   io?.emit('battle:created', battle);
   res.json({ battle });
 };
@@ -190,6 +224,7 @@ router.post('/:id/reject-request', requireAuth, rejectRequestHandler);
 /* POST /api/battles/:id/cancel-request (Opponent cancels their own join request) */
 router.post('/:id/cancel-request', requireAuth, async (req, res) => {
   const id = req.params.id;
+  const withdrawer = req.user.id;                // cleared off the doc below
   try {
     await withTransaction(async session => {
       const b = await col('battles').findOne({ id }, { session });
@@ -206,9 +241,10 @@ router.post('/:id/cancel-request', requireAuth, async (req, res) => {
     if (map[e.message]) return res.status(map[e.message][0]).json({ error: map[e.message][1] });
     throw e;
   }
-  const battle = shape(await fetchBattle(id), req.user.id);
+  const fresh = await fetchBattle(id);
+  const battle = shape(fresh, req.user.id);
+  emitBattle(req, fresh, [withdrawer]);
   const io = req.app.get('io');
-  io?.to(`battle:${id}`).emit('battle:updated', battle);
   io?.emit('battle:created', battle);
   res.json({ ok: true, battle });
 });
@@ -250,7 +286,7 @@ router.post('/:id/cancel', requireAuth, async (req, res) => {
 
       // Refund exactly who the plan says staked.
       for (const uid of plan.refund) {
-        await credit(uid, 'deposit', b.amount, 'Battle cancelled — refund', id, 'success', session);
+        await refundStake(session, b, uid, 'Battle cancelled — refund');
       }
 
       const other = isCreator ? b.acceptor_id : b.creator_id;
@@ -273,8 +309,7 @@ router.post('/:id/cancel', requireAuth, async (req, res) => {
   for (const [uid, title, body] of notes) await notify(uid, title, body);
   const io = req.app.get('io');
   io?.emit('battle:removed', { id });
-  if (cancelledBattle) io?.to(`battle:${id}`).emit('battle:updated',
-    shape(await fetchBattle(id), req.user.id));
+  if (cancelledBattle) emitBattle(req, await fetchBattle(id));
   res.json({ ok: true, reason });
 });
 
@@ -295,8 +330,9 @@ router.post('/:id/room', requireAuth, async (req, res) => {
     { $set: { room_code: code, status: 'running', room_set_at: now() } });
   if (set.matchedCount === 0) return res.status(409).json({ error: 'The room code has already been set.' });
   if (b.acceptor_id) await notify(b.acceptor_id, 'Room code ready', `Join room ${code} to start the match.`);
-  const battle = shape(await fetchBattle(b.id), req.user.id);
-  req.app.get('io')?.to(`battle:${b.id}`).emit('battle:updated', battle);
+  const fresh = await fetchBattle(b.id);
+  const battle = shape(fresh, req.user.id);
+  emitBattle(req, fresh);
   res.json({ battle });
 });
 
@@ -360,8 +396,8 @@ router.post('/:id/result', requireAuth, async (req, res) => {
       const a = b.creator_id, c2 = b.acceptor_id;
 
       if (byUser[a] === 'cancel' && byUser[c2] === 'cancel') {
-        await credit(a, 'deposit', b.amount, 'Battle cancelled — refund', id, 'success', session);
-        await credit(c2, 'deposit', b.amount, 'Battle cancelled — refund', id, 'success', session);
+        await refundStake(session, b, a, 'Battle cancelled — refund');
+        await refundStake(session, b, c2, 'Battle cancelled — refund');
         await col('battles').updateOne({ id },
           { $set: { status: 'cancelled', settled_at: now() }, $unset: { auto_settle_at: '' } }, { session });
         notes.push([a, 'Battle cancelled', 'Your stake was refunded.'], [c2, 'Battle cancelled', 'Your stake was refunded.']);
@@ -399,8 +435,9 @@ router.post('/:id/result', requireAuth, async (req, res) => {
     throw e;
   }
   for (const [uid, title, body] of notes) await notify(uid, title, body);
-  const battle = shape(await fetchBattle(id), req.user.id);
-  req.app.get('io')?.to(`battle:${id}`).emit('battle:updated', battle);
+  const fresh = await fetchBattle(id);
+  const battle = shape(fresh, req.user.id);
+  emitBattle(req, fresh);
   res.json({ battle, ...outcome });
 });
 

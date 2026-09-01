@@ -12,7 +12,7 @@
    ============================================================ */
 import { col, now, credit, notify, getSettings, withTransaction } from './db.js';
 import { prizeFor, GRACE_LABEL } from './config.js';
-import { payReferralCuts } from './settlement.js';
+import { payReferralCuts, refundStake } from './settlement.js';
 import { shape } from './battle-view.js';
 
 const TICK_MS = 30 * 1000;
@@ -89,7 +89,7 @@ async function settleOne(battleId, settings) {
       if (!await claim({ status: 'cancelled', settled_at: settledAt })) return { state: 'skipped' };
       for (const uid of [b.creator_id, b.acceptor_id]) {
         if (!uid) continue;
-        await credit(uid, 'deposit', b.amount, 'Battle cancelled — refund', b.id, 'success', session);
+        await refundStake(session, b, uid, 'Battle cancelled — refund');
         notes.push([uid, 'Battle cancelled', 'Your stake was refunded — your opponent never reported.']);
       }
       return { state: 'cancelled',

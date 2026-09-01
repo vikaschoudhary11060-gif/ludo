@@ -161,13 +161,15 @@ router.post('/redeem-referral', requireAuth, async (req, res) => {
       { session, returnDocument: 'before' });
     if (!before) throw new Error('NO_REFERRAL');
     amount = before.referral;
-    await credit(req.user.id, 'deposit', amount, 'Referral earnings redeemed', null, 'success', session);
+    /* Into winnings, not deposit: referral money is earned, so it should be
+       withdrawable rather than locked into play-only balance. */
+    await credit(req.user.id, 'winnings', amount, 'Referral earnings redeemed', null, 'success', session);
   }).catch(e => {
     if (e.message === 'NO_REFERRAL') return null;
     throw e;
   });
   if (!amount) return res.status(400).json({ error: 'No referral balance to redeem.' });
-  await notify(req.user.id, 'Referral redeemed! 🎁', `₹${amount} moved to your deposit balance.`);
+  await notify(req.user.id, 'Referral redeemed! 🎁', `₹${amount} moved to your winnings — you can withdraw it.`);
   const updatedWallet = await getWallet(req.user.id);
   res.json({ ok: true, redeemed: amount, wallet: { ...updatedWallet, total: updatedWallet.deposit + updatedWallet.winnings } });
 });

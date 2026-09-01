@@ -46,6 +46,11 @@ export function attachRealtime(io, app) {
 
   io.on('connection', socket => {
     socket.join('lobby');
+    /* A personal room per signed-in player. Battle updates go here as well as
+       to the battle room, so a player watching the lobby sees their own battle
+       change without having opened it. */
+    const uid = socket.data.user?.id;
+    if (uid != null) socket.join(`user:${uid}`);
 
     socket.on('battle:watch', async ({ id } = {}) => {
       if (typeof id !== 'string' || !/^[a-f0-9]{12}$/.test(id)) return;

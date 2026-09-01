@@ -25,6 +25,7 @@ import referralRoutes from './routes/referrals.js';
 import { userRouter as paymentUserRoutes } from './routes/payments.js';
 import { attachRealtime } from './realtime.js';
 import { startSettlementSweeper } from './lib/settle-sweeper.js';
+import { runBackfills } from './lib/backfill.js';
 import { MODES, DEPOSIT, WITHDRAW, BONUS_PER, BONUS_AMOUNT,
          CANCEL_WINDOW_MS, CLAIM_GRACE_MS, IS_DEV, commissionFor, CANCEL_REASONS } from './lib/config.js';
 import { getSettings, connect, ensureSeed } from './lib/db.js';
@@ -168,6 +169,7 @@ process.on('uncaughtException', err => {
 const PORT = Number(process.env.PORT) || 4000;
 await connect();
 await ensureSeed();
+await runBackfills();       // repairs old rows; safe to re-run
 startSettlementSweeper(app);
 server.listen(PORT, () => {
   console.log(`Khelbro API listening on http://localhost:${PORT}`);

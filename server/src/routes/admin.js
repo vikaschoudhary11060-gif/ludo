@@ -6,7 +6,7 @@ import rateLimit from 'express-rate-limit';
 import { col, nextId, now, credit, notify, getSettings, audit, withTransaction } from '../lib/db.js';
 import { verifyLogin, signAdmin, requireAdmin, createAdmin, adminCount, ROLES } from '../lib/admin-auth.js';
 import { bonusFor, BONUS_LABEL, prizeFor } from '../lib/config.js';
-import { payReferralCuts } from '../lib/settlement.js';
+import { payReferralCuts, refundStake } from '../lib/settlement.js';
 import playerRoutes from './admin-players.js';
 import paymentAdminRoutes from './payments.js';
 
@@ -251,8 +251,8 @@ router.post('/disputes/:id/resolve', requireAdmin('admin'), async (req, res) => 
       if (!b) throw new Error('NOTFOUND');
       if (b.status !== 'disputed') throw new Error('NOTDISPUTED');
       if (outcome === 'refund') {
-        await credit(b.creator_id, 'deposit', b.amount, 'Dispute refunded by support', id, 'success', session);
-        await credit(b.acceptor_id, 'deposit', b.amount, 'Dispute refunded by support', id, 'success', session);
+        await refundStake(session, b, b.creator_id, 'Dispute refunded by support');
+        await refundStake(session, b, b.acceptor_id, 'Dispute refunded by support');
         await col('battles').updateOne({ id }, { $set: { status: 'cancelled', settled_at: now() } }, { session });
         [b.creator_id, b.acceptor_id].forEach(u => notes.push([u, 'Dispute resolved', `Your ₹${b.amount} stake was refunded.${note ? ' ' + note : ''}`]));
       } else {

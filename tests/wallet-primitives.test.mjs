@@ -40,28 +40,28 @@ test('debit', async t => {
 
   await t.test('spends deposit before winnings', async () => {
     await seedWallet(1, { deposit: 100, winnings: 100 });
-    assert.equal(await debit(1, 60, 'stake'), true);
+    assert.deepEqual(await debit(1, 60, 'stake'), { deposit: 60, winnings: 0 });
     const w = await getWallet(1);
     assert.deepEqual([w.deposit, w.winnings], [40, 100], 'deposit is drained first');
   });
 
   await t.test('spills into winnings once deposit is exhausted', async () => {
     await seedWallet(2, { deposit: 30, winnings: 100 });
-    assert.equal(await debit(2, 80, 'stake'), true);
+    assert.deepEqual(await debit(2, 80, 'stake'), { deposit: 30, winnings: 50 });
     const w = await getWallet(2);
     assert.deepEqual([w.deposit, w.winnings], [0, 50]);
   });
 
   await t.test('spends the exact full balance', async () => {
     await seedWallet(3, { deposit: 40, winnings: 60 });
-    assert.equal(await debit(3, 100, 'stake'), true);
+    assert.deepEqual(await debit(3, 100, 'stake'), { deposit: 40, winnings: 60 });
     const w = await getWallet(3);
     assert.deepEqual([w.deposit, w.winnings], [0, 0]);
   });
 
   await t.test('refuses to overdraw by a single rupee', async () => {
     await seedWallet(4, { deposit: 40, winnings: 60 });
-    assert.equal(await debit(4, 101, 'stake'), false);
+    assert.equal(await debit(4, 101, 'stake'), null, 'short debits report null');
     const w = await getWallet(4);
     assert.deepEqual([w.deposit, w.winnings], [40, 60], 'balance untouched on refusal');
   });
@@ -108,13 +108,13 @@ test('debit', async t => {
   await t.test('rejects nonsense amounts instead of corrupting the balance', async () => {
     await seedWallet(7, { deposit: 100 });
     for (const bad of [0, -50, NaN, Infinity, undefined, null]) {
-      assert.equal(await debit(7, bad, 'junk'), false, `${String(bad)} must be refused`);
+      assert.equal(await debit(7, bad, 'junk'), null, `${String(bad)} must be refused`);
     }
     assert.equal((await getWallet(7)).deposit, 100);
   });
 
   await t.test('returns false for a wallet that does not exist', async () => {
-    assert.equal(await debit(999, 10, 'stake'), false);
+    assert.equal(await debit(999, 10, 'stake'), null);
   });
 
   await t.test('writes one ledger row per bucket touched', async () => {
@@ -149,7 +149,8 @@ test('credit', async t => {
 
   await t.test('a wallet born from a credit can still be debited', async () => {
     await credit(12, 'winnings', 500, 'Battle won');
-    assert.equal(await debit(12, 500, 'stake'), true, 'missing-field guard regression');
+    assert.deepEqual(await debit(12, 500, 'stake'), { deposit: 0, winnings: 500 },
+      'missing-field guard regression');
     assert.equal((await getWallet(12)).winnings, 0);
   });
 
