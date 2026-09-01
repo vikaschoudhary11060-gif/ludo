@@ -3,6 +3,7 @@ import express from 'express';
 import { SafeRouter } from '../lib/safe-router.js';
 import { col } from '../lib/db.js';
 import { optionalAuth } from '../lib/auth.js';
+import { NOT_BOT } from '../lib/bots.js';
 
 const router = SafeRouter();
 const WINDOWS = { today: 864e5, week: 7 * 864e5, all: null };
@@ -12,7 +13,9 @@ router.get('/', optionalAuth, async (req, res) => {
   const since = WINDOWS[range] ? Date.now() - WINDOWS[range] : 0;
 
   const rows = await col('battles').aggregate([
-    { $match: { status: 'completed', settled_at: { $gte: since }, winner_id: { $ne: null } } },
+    // A bot battle never completes, so this changes nothing today — it is
+    // here so a future bot that does settle cannot climb the rankings.
+    { $match: { status: 'completed', settled_at: { $gte: since }, winner_id: { $ne: null }, ...NOT_BOT } },
     { $group: { _id: '$winner_id', wins: { $sum: 1 }, earned: { $sum: { $ifNull: ['$payout', 0] } } } },
     { $sort: { wins: -1, earned: -1 } },
     { $limit: 100 },

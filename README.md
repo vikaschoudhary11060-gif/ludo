@@ -83,15 +83,17 @@ books that do not balance.
 |---|---|---|
 | GET  | `/api/config` | modes, commission, limits — the front end should read rules from here |
 | GET  | `/api/health` | liveness |
+| POST | `/api/auth/check` | `{ phone }` → `{ exists, hasPassword }`; decides which sign-in screen to show |
 | POST | `/api/auth/request-otp` | `{ phone }`, rate-limited 5 / 10 min |
 | POST | `/api/auth/verify-otp` | `{ phone, code, referralCode? }` → JWT; creates the account on first use |
+| POST | `/api/auth/login-password` | `{ phone, password }` → JWT; 5 wrong tries lock the account for 15 min |
+| POST | `/api/auth/set-password` | first-time setup and later changes; returns a fresh token |
 | GET  | `/api/auth/me` | profile + wallet + stats |
 | PATCH| `/api/users/me` | name, avatar, email |
 | POST | `/api/users/kyc` | submit for review |
 | GET  | `/api/users/notifications` · POST `/notifications/read` | |
 | GET  | `/api/users/referrals` | code, referred players, earnings |
 | GET  | `/api/wallet` · `/wallet/transactions` | |
-| POST | `/api/wallet/deposit` | **simulated** — wire your PSP webhook here |
 | POST | `/api/wallet/withdraw` | requires KYC; winnings only |
 | POST | `/api/wallet/redeem-referral` | referral → deposit balance |
 | GET  | `/api/battles?mode=&status=` · `/battles/mine` · `/battles/:id` | |
@@ -101,11 +103,33 @@ books that do not balance.
 | POST | `/api/battles/:id/reject` | creator sends the joiner away; their stake is refunded |
 | POST | `/api/uploads/proof` | multipart screenshot upload (JPG/PNG/WebP, 5 MB) |
 | POST | `/api/uploads/kyc/:slot` | `front` \| `back` \| `selfie` |
-| POST | `/api/wallet/deposit-request` | manual UPI route: submit amount + UTR for verification |
+| POST | `/api/wallet/deposit-request` | the only deposit route: amount + UTR, credited after an admin approves |
 | GET  | `/api/wallet/deposit-requests` | your pending/approved/rejected requests |
 | GET  | `/api/chat` · `/chat/unread` | the player's conversation and unread count |
 | POST | `/api/chat/message` · `/chat/read` | send, mark read |
 | POST | `/api/support` | |
+
+### Sign-in
+
+First sign-in on a number is an OTP, and the account is then required to create a
+password. Afterwards that number signs in with the password, and the OTP becomes the
+forgotten-password route. Five wrong passwords lock the *password door* for fifteen
+minutes; the OTP door stays open, so nobody can be locked out of their own account.
+
+### Lobby bots
+
+Fifteen house accounts keep battles appearing on the lobby: one is created, a second
+bot accepts it two to three seconds later so it lands in **Running**, and it is removed
+a few minutes on. They never touch a wallet, never write a ledger row and never settle,
+and every admin figure filters them out — so there is no bot commission to report. Real
+players cannot join one or open its detail page. Switch them off with `BOT_BATTLES=false`.
+
+### Settings the admin owns
+
+Commission tiers, referral commission, signup and referral bonuses, the withdrawal and
+deposit switches, the per-player battle limit, the deposit UPI ID and the player notice
+shown on the battles page are all edited in **Admin → Settings** and take effect on the
+next request. Rates are typed as percentages in the panel and stored as fractions.
 
 ### Admin API (Bearer token from `POST /api/admin/login`)
 

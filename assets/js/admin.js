@@ -132,7 +132,7 @@
 
       <h2 class="mb-3 mt-6 text-title text-ink">Money</h2>
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        ${card('Deposits (instant)', money(s.deposits.instant))}
+        ${card('Deposit credits (ledger)', money(s.deposits.instant), 'every deposit credited to a wallet')}
         ${card('Deposits (verified UPI)', money(s.deposits.approved), `${s.deposits.pending} awaiting check`)}
         ${card('Withdrawals paid', money(s.withdrawals.paid))}
         ${card('Withdrawals pending', money(s.withdrawals.pendingValue), `${s.withdrawals.pending} request(s)`, 'text-gold-deep')}
@@ -344,7 +344,7 @@
 
     $('#deposits').innerHTML =
       `<h2 class="mb-2 text-title text-ink">UPI requests (need verification)</h2>${reqTable}
-       <h2 class="mb-2 mt-6 text-title text-ink">Instant top-ups (auto-credited)</h2>${instantList || empty('None in this range.')}`;
+       <h2 class="mb-2 mt-6 text-title text-ink">Deposit credits on the ledger</h2>${instantList || empty('None in this range.')}`;
     setCount('deposits', requests.filter(r => r.status === 'pending').length);
   }
 
@@ -757,27 +757,91 @@
         </div>`).join('') : empty('No payment methods yet. Add one above.'));
   }
 
-  /* ---------------- settings ---------------- */
+  /* ---------------- settings ----------------
+     Every business rule the operator can change without a deploy. Rates are
+     stored as fractions (0.035) but typed as percentages (3.5) — an admin
+     typing "5" meaning 5% into a fraction field would have set a 500%
+     commission, so the conversion lives here rather than in their head. */
+  const pctOf = (v, fallback) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? +(n * 100).toFixed(3) : fallback;
+  };
+
   async function loadSettings() {
     const { settings } = await call('/admin/settings');
-    const toggle = (k, label) => `<label class="flex cursor-pointer items-center gap-3 rounded-tile border border-line p-3 transition hover:border-brand">
-        <input type="checkbox" class="h-5 w-5 accent-brand" data-set="${k}" ${settings[k] ? 'checked' : ''}>
-        <span class="text-body text-ink">${label}</span></label>`;
-    const num = (k, label, step) => `<label class="flex items-center gap-3">
-        <input type="number" step="${step}" value="${settings[k]}" data-set="${k}" class="field !h-9 w-28">
-        <span class="text-body text-ink">${label}</span></label>`;
-    $('#settings').innerHTML =
-      toggle('withdraw_open', 'Withdrawals open') +
-      toggle('deposit_open', 'Deposits open') +
-      toggle('maintenance', 'Maintenance mode') +
-      num('commission_threshold', 'Commission threshold (₹)', '50') +
-      num('commission_under', 'Rate below threshold (0.035 = 3.5%)', '0.005') +
-      num('commission_from', 'Rate at/above threshold (0.025 = 2.5%)', '0.005') +
-      num('referral_rate', 'Referral rate', '0.01') +
-      num('battle_limit', 'Max open battles per user', '1') +
-      `<label class="flex items-center gap-3"><input class="field !h-9 w-56" value="${esc(settings.upi_id || '')}" data-set="upi_id"><span class="text-body text-ink">Deposit UPI ID</span></label>` +
-      `<label class="flex items-center gap-3"><input class="field !h-9 flex-1" value="${esc(settings.notice || '')}" data-set="notice" placeholder="Shown to every player"><span class="shrink-0 text-body text-ink">Notice</span></label>` +
-      `<button class="btn btn-primary !min-h-[38px] !px-6 !text-meta" type="button" id="save-settings">Save changes</button>`;
+
+    const group = (title, hint, body) => `
+      <section class="rounded-card border border-line bg-surface p-4">
+        <h3 class="text-body font-bold text-ink">${title}</h3>
+        ${hint ? `<p class="mt-0.5 text-meta text-muted">${hint}</p>` : ''}
+        <div class="mt-3 space-y-3">${body}</div>
+      </section>`;
+
+    const toggle = (k, label, hint) => `
+      <label class="flex cursor-pointer items-start gap-3 rounded-tile border border-line p-3 transition hover:border-brand">
+        <input type="checkbox" class="mt-0.5 h-5 w-5 shrink-0 accent-brand" data-set="${k}" ${settings[k] ? 'checked' : ''}>
+        <span class="min-w-0">
+          <span class="block text-body text-ink">${label}</span>
+          ${hint ? `<span class="block text-meta text-muted">${hint}</span>` : ''}
+        </span></label>`;
+
+    /* `scale` marks a field the save handler must divide by 100 on the way
+       out; without it a percentage would be written straight in as a rate. */
+    const field = (k, label, attrs, value, hint) => `
+      <label class="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <input ${attrs} value="${esc(value)}" data-set="${k}" class="field !h-9 w-32">
+        <span class="text-body text-ink">${label}</span>
+        ${hint ? `<span class="w-full text-meta text-muted">${hint}</span>` : ''}
+      </label>`;
+
+    const rupees = (k, label, hint) =>
+      field(k, label, 'type="number" min="0" step="1" data-unit="rupees"', Number(settings[k]) || 0, hint);
+    const percent = (k, label, hint) =>
+      field(k, label, 'type="number" min="0" step="0.1" data-scale="100"', pctOf(settings[k], 0), hint);
+    const count = (k, label, hint) =>
+      field(k, label, 'type="number" min="1" step="1"', Number(settings[k]) || 1, hint);
+
+    $('#settings').innerHTML = `
+      <div class="grid gap-4 lg:grid-cols-2">
+        ${group('Switches', 'Take a route offline without a deploy.',
+          toggle('withdraw_open', 'Withdrawals enabled',
+                 'Off: the withdraw page shows a closed notice and the API refuses requests.') +
+          toggle('deposit_open', 'Deposits enabled',
+                 'Off: players cannot submit new UPI deposit requests.') +
+          toggle('maintenance', 'Maintenance mode'))}
+
+        ${group('Game commission', 'Taken from the pot before the winner is paid. Small battles carry the higher rate.',
+          percent('commission_under', 'Commission below the threshold (%)',
+                  'e.g. 3.5 means a ₹100 battle pays the winner ₹193.') +
+          percent('commission_from', 'Commission at or above the threshold (%)',
+                  'e.g. 2.5 means a ₹500 battle pays the winner ₹975.') +
+          rupees('commission_threshold', 'Threshold (₹)',
+                 'Battles below this amount take the higher rate.'))}
+
+        ${group('Referral &amp; bonuses', 'Applied live — the next signup and the next settled battle already use these.',
+          percent('referral_rate', 'Referral commission (%)',
+                  'Paid to the referrer from every battle their player settles.') +
+          rupees('signup_bonus', 'Signup bonus (₹)',
+                 'Credited to every new account’s cash balance. 0 switches it off.') +
+          rupees('referral_bonus', 'Referral signup bonus (₹)',
+                 'Extra cash credited when the new account used a referral code.'))}
+
+        ${group('Play &amp; payments', '',
+          count('battle_limit', 'Max open battles per player') +
+          `<label class="block">
+             <span class="mb-1.5 block text-body text-ink">Deposit UPI ID</span>
+             <input class="field !h-9 w-full" value="${esc(settings.upi_id || '')}" data-set="upi_id" placeholder="name@bank">
+           </label>`)}
+      </div>
+
+      ${group('Player notice', 'Shown at the top of the battles page, above the amount box. Leave empty to hide it.',
+        `<textarea class="field !h-auto w-full py-2" rows="3" maxlength="500" data-set="notice"
+                   placeholder="e.g. Withdrawals are processed between 10am and 8pm.">${esc(settings.notice || '')}</textarea>
+         <p class="text-meta text-muted">Plain text only, up to 500 characters. Saving takes effect immediately.</p>`)}
+
+      <div class="mt-4">
+        <button class="btn btn-primary !min-h-[38px] !px-6 !text-meta" type="button" id="save-settings">Save changes</button>
+      </div>`;
   }
 
   const TABS = { overview: loadOverview, players: loadPlayers, games: loadGames, disputes: loadDisputes,
@@ -976,10 +1040,23 @@
 
     if (t.id === 'save-settings') {
       const body = {};
+      let bad = null;
       $$('[data-set]').forEach(el => {
-        body[el.dataset.set] = el.type === 'checkbox' ? el.checked
-                             : el.type === 'number' ? Number(el.value) : el.value;
+        if (el.type === 'checkbox') { body[el.dataset.set] = el.checked; return; }
+        if (el.type !== 'number') { body[el.dataset.set] = el.value; return; }
+        const raw = Number(el.value);
+        if (!Number.isFinite(raw) || raw < 0) { bad = bad || el.dataset.set; return; }
+        // Percentage fields are typed as 3.5 and stored as 0.035.
+        const scale = Number(el.dataset.scale) || 1;
+        /* Rupee amounts and counts are whole numbers on the server. Catching
+           "25.5" here names the field; letting it through returns a flat
+           "Invalid settings." that says nothing about which one. */
+        if (scale === 1 && !Number.isInteger(raw)) { bad = bad || el.dataset.set; return; }
+        // Rounded, because 3.5/100 is 0.034999999999999996 in binary floating
+        // point and the server rejects nothing but stores the noise forever.
+        body[el.dataset.set] = scale === 1 ? raw : Number((raw / scale).toFixed(6));
       });
+      if (bad) { toast(`Enter a valid number for ${bad.replace(/_/g, ' ')}`, 'error'); return; }
       try { await call('/admin/settings', { method: 'PATCH', body: JSON.stringify(body) }); toast('Settings saved', 'success'); }
       catch (err) { toast(err.message, 'error'); }
       return;

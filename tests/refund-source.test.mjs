@@ -150,6 +150,20 @@ test('refund returns money to its source', async t => {
     assert.equal((await getWallet(99)).deposit, 500);
   });
 
+  await t.test('refuses a battle side that nobody filled', async () => {
+    /* A disputed battle can reach an admin with one seat empty. `null` used to
+       match acceptor_id === null, find no split and credit the full stake to a
+       wallet keyed on null — money out of thin air. */
+    for (const bad of [null, undefined, '3', 1.5, NaN]) {
+      await assert.rejects(
+        () => refundStake(null, battleWith({ acceptor_id: null }), bad, 'refund'),
+        /non-player id/,
+        `refundStake accepted ${String(bad)} as a player`);
+    }
+    assert.equal(fake.dump('wallets').length, 0, 'a phantom wallet was created');
+    assert.equal(fake.dump('transactions').length, 0, 'a phantom ledger row was written');
+  });
+
   await t.test('the ledger records each bucket separately', async () => {
     seedWallet(HOST, { deposit: 400, winnings: 5000 });
     const stake = await debit(HOST, 500, 'stake');

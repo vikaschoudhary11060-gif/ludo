@@ -25,10 +25,43 @@ export const BONUS_LABEL = `Cashback bonus (₹${BONUS_AMOUNT} per ₹${BONUS_PE
 export const bonusFor = amount =>
   Math.floor(Math.max(0, Number(amount) || 0) / BONUS_PER) * BONUS_AMOUNT;
 
+/* ---------- signup bonus ----------
+   A flat welcome credit, set by the admin and applied live. It lands in the
+   deposit (cash) bucket, so it can be played with but never withdrawn
+   straight back out. Zero — the default — switches it off entirely.
+
+   Two knobs, because "signup bonus" and "referral bonus" are different
+   promises: everyone gets `signup_bonus`, and an account that arrived through
+   somebody's referral code gets `referral_bonus` on top. */
+export const SIGNUP_BONUS_LABEL = 'Welcome bonus';
+export const REFERRAL_BONUS_LABEL = 'Referral signup bonus';
+
+/** Whole rupees only, never negative, never NaN — this is credited straight
+    into a wallet, and credit() throws on anything else. */
+const bonusAmount = v => {
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+
+/** What a brand-new account is credited, as [amount, label] pairs.
+    `hasReferrer` adds the referral tier on top of the plain welcome credit. */
+export function signupBonuses(settings = {}, hasReferrer = false) {
+  const out = [];
+  const welcome = bonusAmount(settings.signup_bonus);
+  if (welcome > 0) out.push([welcome, SIGNUP_BONUS_LABEL]);
+  if (hasReferrer) {
+    const referred = bonusAmount(settings.referral_bonus);
+    if (referred > 0) out.push([referred, REFERRAL_BONUS_LABEL]);
+  }
+  return out;
+}
+
 /* ---------- battle timing ----------
-   Once the room code is set the match is live, so a player gets a short
-   window to back out and after that must play it through and report. */
-export const CANCEL_WINDOW_MS = 60 * 1000;          // 1 minute
+   Once the room code is set the match is live, so a player gets a window to
+   back out and after that must play it through and report. Ten minutes: long
+   enough that an opponent who never actually opens the Ludo room can be
+   walked away from, short enough that a played match cannot be undone. */
+export const CANCEL_WINDOW_MS = 10 * 60 * 1000;     // 10 minutes
 
 /** Can this battle still be cancelled? Open until CANCEL_WINDOW_MS after the
     room code went up (falling back to creation for battles with no code yet). */
@@ -105,6 +138,9 @@ export const SETTINGS_DEFAULTS = {
   commission_from: 0.025,         // 2.5% at or above it
   battle_limit: 2,
   referral_rate: 0.01,
+  /* Flat joining credits, in whole rupees. 0 = switched off. */
+  signup_bonus: 0,
+  referral_bonus: 0,
   upi_id: 'khelbro@upi',
   qr_image: null,
 };

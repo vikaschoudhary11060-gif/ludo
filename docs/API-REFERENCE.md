@@ -22,15 +22,21 @@ sessions are rejected with 401/403.
 | Method | Path | Body / Query | Returns |
 |---|---|---|---|
 | GET | `/api/health` | — | `{ ok, at }` |
-| GET | `/api/config` | — | modes, deposit/withdraw limits, commission, referralRate, battleLimit, withdrawOpen, depositOpen, maintenance, notice, upiId, qrImage |
+| GET | `/api/config` | — | modes, deposit/withdraw limits, commission tiers, referralRate, battleLimit, withdrawOpen, depositOpen, maintenance, notice, upiId, qrImage, signupBonus, cancelWindowMs (10 min), claimGraceMs |
 
 ## Auth (player)
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
+| POST | `/api/auth/check` | `{ phone }` | `{ exists, hasPassword }` — which sign-in screen to show. Rate-limited. |
 | POST | `/api/auth/request-otp` | `{ phone }` | `{ ok, expiresIn, devCode? }` — `devCode` only when `EXPOSE_OTP=true`. Rate-limited. |
-| POST | `/api/auth/verify-otp` | `{ phone, code, referralCode? }` | `{ token, user, isNew }` — creates the account on first use |
-| GET | `/api/auth/me` | — 🔒 | `{ user, wallet, stats:{played,won} }` |
+| POST | `/api/auth/verify-otp` | `{ phone, code, referralCode? }` | `{ token, user, isNew, needsPassword }` — creates the account on first use; pays the signup bonus |
+| POST | `/api/auth/login-password` | `{ phone, password }` | `{ token, user }` — 5 wrong tries lock the account for 15 minutes (`code: LOCKED`); the OTP route stays open |
+| POST | `/api/auth/set-password` | `{ password, currentPassword? }` 🔒 | `{ ok, token }` — **store the new token**: setting a password bumps the session epoch and signs every other device out. `currentPassword` is required only when one is already set *and* the session came from a password login |
+| GET | `/api/auth/me` | — 🔒 | `{ user: {…, hasPassword}, wallet, stats:{played,won} }` |
+
+**Sign-in flow.** First time: `check` → `request-otp` → `verify-otp` → (`needsPassword`) → `set-password`.
+Afterwards: `check` → `login-password`. Forgotten: `request-otp` → `verify-otp` → `set-password`.
 
 ## Users / profile 🔒
 
@@ -50,8 +56,7 @@ sessions are rejected with 401/403.
 |---|---|---|---|
 | GET | `/api/wallet` | — | `{ wallet:{deposit,winnings,referral,total} }` |
 | GET | `/api/wallet/transactions` | `?type=credit|debit` | last 200 |
-| POST | `/api/wallet/deposit` | `{ amount }` | **simulated** instant top-up; 5% bonus ≥ ₹500. Replace with a real gateway webhook. |
-| POST | `/api/wallet/deposit-request` | `{ amount, utr }` | manual UPI: records the UTR + the user's assigned payment method; admin verifies |
+| POST | `/api/wallet/deposit-request` | `{ amount, utr, proof? }` | **the only deposit route.** Records the UTR and the user's assigned payment method; nothing is credited until an admin approves it. The screenshot is optional. |
 | GET | `/api/wallet/deposit-requests` | — | the caller's requests |
 | POST | `/api/wallet/withdraw` | `{ amount, method:'upi'|'bank', upiId? | accountName,accountNumber,ifsc,bankName? }` | requires KYC; **winnings only** — deposit money is never withdrawable |
 | POST | `/api/wallet/redeem-referral` | — | move referral earnings into deposit |
@@ -173,7 +178,7 @@ Role required shown as (viewer)/(admin)/(owner).
 | POST | `/api/admin/admins` | owner | `{ username, name, password, role }` |
 | PATCH | `/api/admin/admins/:id` | owner | `{ active?, role? }` |
 | GET | `/api/admin/settings` | viewer | current settings |
-| PATCH | `/api/admin/settings` | owner | withdraw/deposit open, maintenance, commission, battle_limit, referral_rate, upi_id, notice |
+| PATCH | `/api/admin/settings` | owner | `withdraw_open`, `deposit_open`, `maintenance`, `commission_threshold`, `commission_under`, `commission_from`, `referral_rate`, `signup_bonus`, `referral_bonus`, `battle_limit`, `upi_id`, `notice`. Rates are fractions (0.035 = 3.5%); bonuses are whole rupees. Every value applies to the next request — no restart. |
 
 ---
 

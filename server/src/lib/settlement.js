@@ -25,6 +25,14 @@ const stakeField = (battle, userId) =>
     those the old behaviour is the only option, so the whole amount goes to
     deposit and the note says so. */
 export async function refundStake(session, battle, userId, note) {
+  /* A missing player is not a player to refund. Without this, `userId` of
+     null matches `battle.acceptor_id === null` in stakeField(), finds no
+     recorded split, and falls through to crediting the full stake to a wallet
+     keyed on null — money conjured out of a battle nobody joined. Throwing
+     aborts the surrounding transaction, which is the safe direction. */
+  if (!Number.isInteger(userId))
+    throw new Error(`refundStake() refused a non-player id (${userId}) on battle ${battle?.id}`);
+
   const field = stakeField(battle, userId);
   const split = field ? battle[field] : null;
   const amount = battle.amount;

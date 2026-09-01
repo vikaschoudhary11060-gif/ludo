@@ -318,7 +318,9 @@ html.anim main { animation: kb-safety 0s linear 1.2s forwards; }
   }
   .toast-success { @apply bg-cta-deep; }
   .toast-error   { @apply bg-live; }
-  .toast-info    { @apply bg-ink; }
+  /* A fixed dark blue, not the `ink` token: ink flips to near-white in dark
+     mode, so `text-white` on it left info toasts unreadable. */
+  .toast-info    { @apply bg-brand-dark; }
 
   /* Slow drifting dice field behind the sign-in screen, like the reference's
      22s splash pan. */

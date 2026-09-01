@@ -66,6 +66,32 @@
             </form>
           </div>
 
+          <!-- STEP 2a — password (returning players who have set one) -->
+          <div id="step-password" hidden>
+            <h1 class="mt-6 text-center font-display text-h1 text-white">Welcome back</h1>
+            <p class="mt-1 text-center text-body-sm text-white/85">
+              Signing in as <span class="font-bold text-gold-light" id="pw-target">+91</span>
+              <button class="ml-1 underline decoration-white/50 underline-offset-2" type="button" id="pw-change">Change</button>
+            </p>
+
+            <form class="mx-auto mt-5 w-full max-w-sm" id="password-form" novalidate>
+              <label class="sr-only" for="login-password">Password</label>
+              <div class="flex overflow-hidden rounded-lg bg-white shadow-card">
+                <input class="h-14 flex-1 px-4 text-body text-ink outline-none placeholder:text-muted"
+                       id="login-password" name="password" type="password"
+                       autocomplete="current-password" placeholder="Password"
+                       aria-describedby="login-pw-err" required>
+                <button class="grid w-16 shrink-0 place-items-center border-l border-line bg-surface-page text-meta font-bold uppercase text-muted-dark transition hover:text-brand"
+                        type="button" id="login-pw-eye" aria-label="Show password" aria-pressed="false">Show</button>
+              </div>
+              <p class="mt-2 hidden text-meta font-medium text-gold-light" id="login-pw-err" role="alert"></p>
+
+              <button class="btn btn-primary btn-block mt-5 !h-14" type="submit" id="password-submit">Sign in</button>
+              <button class="btn btn-ghost btn-block mt-2 !text-white/90 hover:!bg-white/10"
+                      type="button" id="use-otp">Forgot password? Sign in with OTP</button>
+            </form>
+          </div>
+
           <!-- STEP 2 — OTP -->
           <div id="step-otp" hidden>
             <h1 class="mt-6 text-center font-display text-h1 text-white">Enter the code</h1>
@@ -101,6 +127,41 @@
             </form>
           </div>
 
+          <!-- STEP 3 — create a password (first sign-in on this account) -->
+          <div id="step-setpw" hidden>
+            <h1 class="mt-6 text-center font-display text-h1 text-white" id="setpw-title">Create your password</h1>
+            <p class="mt-1 text-center text-body-sm text-white/85" id="setpw-lede">
+              You are signed in. Set a password now &mdash; you will use it instead of an OTP next time.
+            </p>
+
+            <form class="mx-auto mt-5 w-full max-w-sm" id="setpw-form" novalidate>
+              <label class="sr-only" for="new-password">New password</label>
+              <div class="flex overflow-hidden rounded-lg bg-white shadow-card">
+                <input class="h-14 flex-1 px-4 text-body text-ink outline-none placeholder:text-muted"
+                       id="new-password" type="password" autocomplete="new-password"
+                       placeholder="New password" aria-describedby="setpw-help setpw-err" required>
+                <button class="grid w-16 shrink-0 place-items-center border-l border-line bg-surface-page text-meta font-bold uppercase text-muted-dark transition hover:text-brand"
+                        type="button" id="setpw-eye" aria-label="Show password" aria-pressed="false">Show</button>
+              </div>
+              <p class="mt-2 text-meta text-white/70" id="setpw-help">
+                At least 6 characters. Not your phone number.
+              </p>
+
+              <label class="sr-only" for="confirm-password">Confirm password</label>
+              <div class="mt-3 flex overflow-hidden rounded-lg bg-white shadow-card">
+                <input class="h-14 flex-1 px-4 text-body text-ink outline-none placeholder:text-muted"
+                       id="confirm-password" type="password" autocomplete="new-password"
+                       placeholder="Confirm password" required>
+              </div>
+
+              <p class="mt-2 hidden text-meta font-medium text-gold-light" id="setpw-err" role="alert"></p>
+
+              <button class="btn btn-primary btn-block mt-5 !h-14" type="submit" id="setpw-submit">
+                Save password &amp; continue
+              </button>
+            </form>
+          </div>
+
           <p class="mx-auto mt-10 max-w-sm text-center text-meta leading-relaxed text-white/80">
             By continuing you agree to our
             <a class="font-bold text-gold-light underline underline-offset-2" href="#">Terms of Use</a> and
@@ -108,7 +169,8 @@
             and confirm you are 18 or older. Khelbro is a free-to-play skill gaming site.
           </p>
           <p class="mx-auto mt-4 max-w-sm text-center text-meta text-white/60">
-            Demo sign-in &mdash; no SMS is sent and nothing leaves your browser.
+            First time here? Sign in with a one-time code and set a password.
+            After that, your password is all you need.
           </p>
         </div>
       </section>

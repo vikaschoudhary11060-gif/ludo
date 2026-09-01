@@ -26,7 +26,7 @@
             </div>
             <p class="mt-4 rounded-tile bg-surface-page px-3 py-2 text-center text-meta text-muted">
               Prize on win <span class="font-bold text-ink" id="b-prize">&#8377;0</span>
-              <span class="mx-1">&middot;</span> 5% commission
+              <span class="mx-1">&middot;</span> <span id="b-commission">commission applies</span>
             </p>
           </div>
         </section>
@@ -57,6 +57,52 @@
           </div>
 
           <p class="mt-3 text-meta text-muted" id="room-hint"></p>
+        </section>
+
+        <!-- Where the match is actually played. The room code above is useless
+             without the Ludo King app, so the install links sit next to it. -->
+        <section class="section" id="ludoking-section">
+          <div class="rounded-card border border-line bg-surface-page p-4">
+            <h2 class="font-display text-title text-ink">Play this match on Ludo King</h2>
+            <p class="mt-1 text-body-sm text-muted">
+              Khelbro handles the stake and the result &mdash; the game itself is played in the
+              official Ludo King app. Install it, open <strong class="text-ink">Play with Friends</strong>
+              and enter the room code above.
+            </p>
+            <div class="mt-4 grid gap-2 sm:grid-cols-2">
+              <a class="flex items-center gap-3 rounded-tile border border-line bg-surface px-3 py-2.5 transition hover:border-brand"
+                 href="https://play.google.com/store/apps/details?id=com.ludo.king"
+                 target="_blank" rel="noopener noreferrer">
+                <svg class="h-7 w-7 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3.6 1.8 13.8 12 3.6 22.2Z" fill="#00C3FF"></path>
+                  <path d="M3.6 1.8 17.3 8.26 13.8 12Z" fill="#00E676"></path>
+                  <path d="M3.6 22.2 13.8 12l3.5 3.74Z" fill="#FF3D47"></path>
+                  <path d="M17.3 8.26 20.6 10.13c.93.53.93 3.21 0 3.74L17.3 15.74 13.8 12Z" fill="#FFCE00"></path>
+                </svg>
+                <span class="min-w-0 flex-1">
+                  <span class="block text-label uppercase tracking-wide text-muted">Get it on</span>
+                  <span class="block text-body font-bold text-ink">Google Play</span>
+                </span>
+                <span class="text-muted" aria-hidden="true">&rsaquo;</span>
+              </a>
+              <a class="flex items-center gap-3 rounded-tile border border-line bg-surface px-3 py-2.5 transition hover:border-brand"
+                 href="https://apps.apple.com/in/app/ludo-king/id993090598"
+                 target="_blank" rel="noopener noreferrer">
+                <svg class="h-7 w-7 shrink-0 text-ink" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M17.05 12.54c-.03-2.6 2.12-3.85 2.22-3.91-1.21-1.77-3.09-2.01-3.76-2.04-1.6-.16-3.12.94-3.93.94-.81 0-2.06-.92-3.39-.9-1.74.03-3.35 1.01-4.25 2.57-1.81 3.14-.46 7.79 1.3 10.34.86 1.25 1.89 2.65 3.24 2.6 1.3-.05 1.79-.84 3.36-.84 1.57 0 2.01.84 3.38.81 1.4-.02 2.28-1.27 3.13-2.53.99-1.45 1.4-2.85 1.42-2.92-.03-.01-2.72-1.04-2.75-4.12z"></path>
+                  <path d="M14.86 4.9c.72-.87 1.2-2.08 1.07-3.29-1.03.04-2.28.69-3.02 1.55-.66.77-1.24 2-1.09 3.18 1.15.09 2.32-.58 3.04-1.44z"></path>
+                </svg>
+                <span class="min-w-0 flex-1">
+                  <span class="block text-label uppercase tracking-wide text-muted">Download on the</span>
+                  <span class="block text-body font-bold text-ink">App Store</span>
+                </span>
+                <span class="text-muted" aria-hidden="true">&rsaquo;</span>
+              </a>
+            </div>
+            <p class="mt-3 text-meta text-muted">
+              Ludo King is made by Gametion and is not affiliated with Khelbro.
+            </p>
+          </div>
         </section>
 
         <div class="divider-x"></div>

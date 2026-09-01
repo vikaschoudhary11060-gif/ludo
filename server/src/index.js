@@ -26,8 +26,9 @@ import { userRouter as paymentUserRoutes } from './routes/payments.js';
 import { attachRealtime } from './realtime.js';
 import { startSettlementSweeper } from './lib/settle-sweeper.js';
 import { runBackfills } from './lib/backfill.js';
+import { startBotEngine } from './lib/bots.js';
 import { MODES, DEPOSIT, WITHDRAW, BONUS_PER, BONUS_AMOUNT,
-         CANCEL_WINDOW_MS, CLAIM_GRACE_MS, IS_DEV, commissionFor, CANCEL_REASONS } from './lib/config.js';
+         CANCEL_WINDOW_MS, CLAIM_GRACE_MS, commissionFor, CANCEL_REASONS } from './lib/config.js';
 import { getSettings, connect, ensureSeed } from './lib/db.js';
 
 const app = express();
@@ -72,8 +73,11 @@ app.get('/api/config', async (_req, res) => {
     withdrawOpen: !!s.withdraw_open, depositOpen: !!s.deposit_open,
     maintenance: !!s.maintenance, notice: s.notice, upiId: s.upi_id, qrImage: s.qr_image,
     bonus: { per: BONUS_PER, amount: BONUS_AMOUNT },
-    // The simulated top-up only exists off production; the UI hides it otherwise.
-    simulatedDeposit: IS_DEV,
+    signupBonus: { signup: s.signup_bonus || 0, referral: s.referral_bonus || 0 },
+    /* The instant top-up is gone: every deposit is paid to our UPI/QR and
+       verified by an admin. Kept in the payload as `false` so an older cached
+       page hides the route rather than offering a button that 404s. */
+    simulatedDeposit: false,
     cancelWindowMs: CANCEL_WINDOW_MS, claimGraceMs: CLAIM_GRACE_MS,
     cancelReasons: CANCEL_REASONS,
   });
@@ -171,6 +175,7 @@ await connect();
 await ensureSeed();
 await runBackfills();       // repairs old rows; safe to re-run
 startSettlementSweeper(app);
+startBotEngine(app);        // lobby activity; no money, no ledger rows
 server.listen(PORT, () => {
   console.log(`Khelbro API listening on http://localhost:${PORT}`);
   console.log(`CORS origins: ${ORIGINS.join(', ')} (and all *.vercel.app)`);

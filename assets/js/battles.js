@@ -247,6 +247,47 @@
     });
   }
 
+  /* The admin's announcement, from /api/config. Written as text so nothing
+     an operator types can inject markup, and hidden outright when unset —
+     an empty banner above the amount box is worse than no banner. */
+  function showNotice(text) {
+    const box = $('#site-notice'), body = $('#site-notice-text');
+    if (!box || !body) return;
+    const msg = String(text ?? '').trim();
+    body.textContent = msg;
+    box.classList.toggle('hidden', !msg);
+  }
+
+  /* Sound the alert when one of my battles reaches a moment I care about:
+     an opponent turning up on a battle I host, or the host starting one I
+     joined. Anything else is left to the quiet re-render. */
+  /* Transitions already announced. `mine` is only refreshed on the next
+     refetch, so without this a second event carrying the same status — a
+     re-emit, a reconnect replay — would read as the same change happening
+     again and sound the alert twice. */
+  const announced = new Set();
+
+  function announce(b) {
+    const alerts = window.KhelbroAlert;
+    const me = K.state.user;
+    if (!alerts || !me || !b || !b.id) return;
+    const once = `${b.id}:${b.status}`;
+    if (announced.has(once)) return;
+    announced.add(once);
+    const prev = mine.find(x => x.id === b.id);
+    const was = prev && prev.status;
+    const iHost = !!(b.creator && b.creator.id === me.id);
+    const iJoined = !!(b.acceptor && b.acceptor.id === me.id);
+
+    if (iHost && b.status === 'requested' && was !== 'requested') {
+      alerts.fire('Opponent found!',
+        `${(b.acceptor && b.acceptor.name) || 'A player'} wants to join your ${money(b.amount)} battle. Open it to accept.`);
+    } else if (iJoined && b.status === 'running' && was !== 'running') {
+      alerts.fire('The host has started the match',
+        `Your ${money(b.amount)} battle is live. Open it for the room code.`);
+    }
+  }
+
   function renderMine() {
     const section = $('#mine-section');
     if (!section) return;
@@ -288,6 +329,16 @@
     }
   }
 
+  /* Lobby events arrive in bursts — a battle being taken fires a removal and
+     an update back to back, and the bots add their own churn. Each one used to
+     trigger three API calls immediately, so coalesce them into one refetch
+     shortly after the last event rather than one per event. */
+  let reloadTimer = null;
+  function reloadSoon() {
+    clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(() => { reloadTimer = null; load(); }, 400);
+  }
+
   const showError = msg => {
     const el = $('#amount-err');
     el.textContent = msg; el.classList.remove('hidden');
@@ -309,6 +360,9 @@
        real tiers rather than one number that would be wrong for half of them. */
     try {
       const conf = await K.config();
+      /* Painted first: the announcement must not depend on the commission
+         table below it rendering successfully. */
+      showNotice(conf.notice);
       /* `tiers`, not `t` — `t` is the translator in this scope. These always
          resolve, so the table shows both rates even against a server that
          does not publish them; one row labelled "All amounts" would state a
@@ -327,7 +381,6 @@
       // Example uses a stake on the lower-rate side, matching the label above.
       const eg = $('#commission-example');
       if (eg) eg.textContent = money(K.prizeFor(500));
-      if (conf.notice) toast(conf.notice, 'info', 6000);
     } catch {}
 
     $('#mode-title').textContent = cfg.name;
@@ -454,7 +507,7 @@
     K.on('battle:created', b => {
       // My own battle, possibly in the other mode — refresh My Battles for it.
       const me = K.state.user;
-      if (me && b.creator && b.creator.id === me.id) { load(); return; }
+      if (me && b.creator && b.creator.id === me.id) { reloadSoon(); return; }
       if (b.mode !== mode || b.status !== 'open') return;
       if (open.some(x => x.id === b.id)) return;
       open.unshift(b); render();
@@ -462,10 +515,16 @@
     K.on('battle:removed', ({ id }) => {
       const before = open.length;
       open = open.filter(b => b.id !== id);
-      if (open.length !== before) render();
-      load();                       // pick up anything that moved into Running
+      if (open.length !== before) render();   // instant, off the local list
+      reloadSoon();                 // then pick up anything that moved into Running
     });
-    K.on('battle:updated', () => load());
+    /* The lobby is where a host actually waits, so the same two alerts fire
+       here as in the battle room. `mine` still holds the previous state at
+       this point, which is what makes "this just changed" detectable — after
+       load() every battle would look like it had always been in that state. */
+    K.on('battle:updated', b => { announce(b); reloadSoon(); });
+
+    window.addEventListener('beforeunload', () => clearTimeout(reloadTimer));
 
     K.revealAfter('#open-skeleton', '#open-wrap');
     await load();

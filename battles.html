@@ -42,7 +42,7 @@
 <link rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Saira+Semi+Condensed:wght@600;700&display=swap">
 <link rel="stylesheet" href="assets/css/app.css">
-<script>window.KHELBRO_API = "https://ludo-qu3q.onrender.com"; window.KHELBRO_BUILD = "a5529a3e2ef5";
+<script>window.KHELBRO_API = "https://ludo-qu3q.onrender.com"; window.KHELBRO_BUILD = "4a3d4d3817c7";
 // Runs before paint so the theme never flashes.
 (function(){try{var t=localStorage.getItem('khelbro.theme')||
 (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
@@ -156,6 +156,26 @@ var l=localStorage.getItem('khelbro.lang');if(l)document.documentElement.lang=l;
     </header>
 
     <main id="main" class="main-area lg:pb-8">
+      <!-- Admin notice. Written from the admin console (Settings -> Player
+           notice) and rendered on load; empty text leaves it hidden, so the
+           page never shows an empty box. -->
+      <aside class="mx-4 mt-3 hidden rounded-[5px] border-l-4 border-gold bg-gold/10 p-3"
+             id="site-notice" role="status" aria-live="polite">
+        <div class="flex items-start gap-2">
+          <svg class="mt-px h-4 w-4 shrink-0 text-gold-deep" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <path d="M3 11v2a1 1 0 0 0 1 1h2l4.5 3.5V6.5L6 10H4a1 1 0 0 0-1 1z"></path>
+            <path d="M16 9a4 4 0 0 1 0 6"></path><path d="M18.5 6.5a7.5 7.5 0 0 1 0 11"></path>
+          </svg>
+          <span class="min-w-0 flex-1">
+            <span class="block text-[9.75px] font-bold uppercase tracking-wide text-gold-deep">Notice</span>
+            <span class="mt-0.5 block whitespace-pre-line text-[11.25px] leading-[18px] text-ink"
+                  id="site-notice-text"></span>
+          </span>
+        </div>
+      </aside>
+
       <!-- Title block: h4 22.5px/500 #0d0d0d, centred; subtitle 15px -->
       <div class="text-center">
         <h1 class="page-title mt-3" id="mode-title">Ludo Classic Lite Mode</h1>
@@ -269,7 +289,7 @@ var l=localStorage.getItem('khelbro.lang');if(l)document.documentElement.lang=l;
             <li>The creator sets an 8-digit room code. Both players must join that room.</li>
             <li>Submit your result honestly. Wrong updates lead to a penalty.</li>
             <li>If the opponent does not join within 5 minutes, cancel to get a refund.</li>
-            <li>Winnings are the amount doubled, minus a 5% commission.</li>
+            <li>Winnings are the amount doubled, minus the commission shown below.</li>
             <li>Abusing or stalling can award the battle to your opponent.</li>
           </ol>
           <h3 class="mt-5 text-body font-bold text-ink">Commission rates</h3>
@@ -353,6 +373,7 @@ var l=localStorage.getItem('khelbro.lang');if(l)document.documentElement.lang=l;
 <script src="assets/js/api.js" defer></script>
 <script src="assets/js/app.js" defer></script>
 <script src="assets/js/anim.js" defer></script>
+<script src="assets/js/alert.js" defer></script>
 <script src="assets/js/battles.js" defer></script>
 </body>
 </html>

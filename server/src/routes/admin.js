@@ -7,6 +7,7 @@ import { col, nextId, now, credit, notify, getSettings, audit, withTransaction }
 import { verifyLogin, signAdmin, requireAdmin, createAdmin, adminCount, ROLES } from '../lib/admin-auth.js';
 import { bonusFor, BONUS_LABEL, prizeFor } from '../lib/config.js';
 import { payReferralCuts, refundStake } from '../lib/settlement.js';
+import { NOT_BOT } from '../lib/bots.js';
 import playerRoutes from './admin-players.js';
 import paymentAdminRoutes from './payments.js';
 
@@ -101,14 +102,14 @@ router.get('/stats', async (req, res) => {
          instantDep, pendingDep, approvedDep,
          pendingWd, pendingWdVal, paidWd] = await Promise.all([
     col('battles').aggregate([
-      { $match: { created_at: { $gte: from } } },
+      { $match: { created_at: { $gte: from }, ...NOT_BOT } },
       { $group: { _id: '$status', n: { $sum: 1 }, staked: { $sum: '$amount' } } },
     ]).toArray(),
     col('battles').aggregate([
-      { $match: { status: 'completed', settled_at: { $gte: from } } },
+      { $match: { status: 'completed', settled_at: { $gte: from }, ...NOT_BOT } },
       { $group: { _id: null, staked: { $sum: '$amount' }, paid: { $sum: { $ifNull: ['$payout', 0] } } } },
     ]).toArray(),
-    col('users').countDocuments({ created_at: { $gte: from } }),
+    col('users').countDocuments({ created_at: { $gte: from }, ...NOT_BOT }),
     col('users').countDocuments({ kyc_status: 'pending' }),
     sumWhere('transactions', { type: 'credit', bucket: 'deposit', note: { $regex: /^(Deposit|Cashback bonus)/ }, created_at: { $gte: from } }),
     col('deposit_requests').countDocuments({ status: 'pending', created_at: { $gte: from } }),
@@ -149,7 +150,10 @@ router.get('/battles', async (req, res) => {
   const from = since(req);
   const status = ['open','waiting','running','completed','cancelled','disputed'].includes(req.query.status) ? req.query.status : null;
   const q = (req.query.q || '').trim();
-  const match = { created_at: { $gte: from }, ...(status ? { status } : {}) };
+  /* Lobby bots are decoration: no wallet moves behind them and nothing is
+     ever settled, so counting them here would overstate every figure the
+     console reports. They are filtered out of every admin query. */
+  const match = { created_at: { $gte: from }, ...NOT_BOT, ...(status ? { status } : {}) };
   let rows = await col('battles').aggregate([
     { $match: match },
     { $sort: { created_at: -1 } }, { $limit: 300 },
@@ -223,7 +227,7 @@ router.post('/withdrawals/:id', requireAdmin('admin'), async (req, res) => {
 /* ---------- disputes ---------- */
 router.get('/disputes', async (req, res) => {
   const rows = await col('battles').aggregate([
-    { $match: { status: 'disputed', created_at: { $gte: since(req) } } },
+    { $match: { status: 'disputed', created_at: { $gte: since(req) }, ...NOT_BOT } },
     { $sort: { created_at: 1 } },
     { $lookup: { from: 'users', localField: 'creator_id', foreignField: 'id', as: 'c' } },
     { $lookup: { from: 'users', localField: 'acceptor_id', foreignField: 'id', as: 'a' } },
@@ -251,10 +255,13 @@ router.post('/disputes/:id/resolve', requireAdmin('admin'), async (req, res) => 
       if (!b) throw new Error('NOTFOUND');
       if (b.status !== 'disputed') throw new Error('NOTDISPUTED');
       if (outcome === 'refund') {
-        await refundStake(session, b, b.creator_id, 'Dispute refunded by support');
-        await refundStake(session, b, b.acceptor_id, 'Dispute refunded by support');
+        /* Only the players who actually staked. A battle can reach an admin
+           with one side missing, and asking for a refund for `null` would
+           credit a wallet that belongs to nobody. */
+        const stakers = [b.creator_id, b.acceptor_id].filter(u => Number.isInteger(u));
+        for (const u of stakers) await refundStake(session, b, u, 'Dispute refunded by support');
         await col('battles').updateOne({ id }, { $set: { status: 'cancelled', settled_at: now() } }, { session });
-        [b.creator_id, b.acceptor_id].forEach(u => notes.push([u, 'Dispute resolved', `Your ₹${b.amount} stake was refunded.${note ? ' ' + note : ''}`]));
+        stakers.forEach(u => notes.push([u, 'Dispute resolved', `Your ₹${b.amount} stake was refunded.${note ? ' ' + note : ''}`]));
       } else {
         const settings = await getSettings();
         const winner = outcome === 'creator' ? b.creator_id : b.acceptor_id;
@@ -425,12 +432,15 @@ router.get('/settings', async (_req, res) => res.json({ settings: await getSetti
 router.patch('/settings', requireAdmin('owner'), async (req, res) => {
   const parsed = z.object({
     withdraw_open: z.boolean().optional(), deposit_open: z.boolean().optional(), maintenance: z.boolean().optional(),
-    notice: z.string().max(300).nullable().optional(), commission: z.number().min(0).max(0.3).optional(),
+    notice: z.string().max(500).nullable().optional(), commission: z.number().min(0).max(0.3).optional(),
     battle_limit: z.number().int().min(1).max(10).optional(), referral_rate: z.number().min(0).max(0.2).optional(),
     // Commission tiers: stakes below the threshold take the higher rate.
     commission_threshold: z.number().int().min(0).max(1000000).optional(),
     commission_under: z.number().min(0).max(0.3).optional(),
     commission_from: z.number().min(0).max(0.3).optional(),
+    // Flat joining credits, whole rupees. 0 switches them off.
+    signup_bonus: z.number().int().min(0).max(100000).optional(),
+    referral_bonus: z.number().int().min(0).max(100000).optional(),
     upi_id: z.string().max(100).optional(),
   }).safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid settings.' });

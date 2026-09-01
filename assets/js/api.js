@@ -95,7 +95,25 @@
     wake: () => request('/health', { auth: false }).catch(() => null),
 
     auth: {
+      /* Which door this number should be shown: password for a returning
+         player who has set one, OTP for everyone else. */
+      check: phone => request('/auth/check', { method: 'POST', auth: false, body: { phone } }),
       requestOtp: phone => request('/auth/request-otp', { method: 'POST', auth: false, body: { phone } }),
+      loginPassword: async (phone, password) => {
+        const data = await request('/auth/login-password',
+          { method: 'POST', auth: false, body: { phone, password } });
+        setToken(data.token);
+        return data;
+      },
+      /* Setting a password signs every other device out, so the server hands
+         back a token on the new epoch — store it or this session dies too. */
+      setPassword: async (password, currentPassword) => {
+        const body = { password };
+        if (currentPassword) body.currentPassword = currentPassword;
+        const data = await request('/auth/set-password', { method: 'POST', body });
+        if (data && data.token) setToken(data.token);
+        return data;
+      },
       verifyOtp: async (phone, code, referralCode) => {
         const body = { phone, code };
         if (referralCode) body.referralCode = referralCode;
@@ -161,7 +179,9 @@
       depositRequests: () => request('/wallet/deposit-requests'),
       depositMethod: () => request('/payments/deposit-method'),
       transactions: type => request('/wallet/transactions' + (type ? `?type=${type}` : '')),
-      deposit: amount => request('/wallet/deposit', { method: 'POST', body: { amount } }),
+      /* No `deposit()` here on purpose: the instant top-up endpoint was
+         removed. Every deposit goes through depositRequest() and is credited
+         by an admin after the UTR is checked. */
       withdraw: payload => request('/wallet/withdraw', { method: 'POST', body: payload }),
       redeemReferral: () => request('/wallet/redeem-referral', { method: 'POST' }),
     },

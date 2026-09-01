@@ -38,7 +38,13 @@ export const JWT_SECRET = SECRET;
 
 const EXPIRES = process.env.JWT_EXPIRES || '7d';
 
-export const sign = (userId, epoch = 0) => jwt.sign({ uid: userId, se: epoch }, SECRET, { expiresIn: EXPIRES });
+/* `via` records how the session was proved: 'otp' when the holder answered an
+   SMS code, 'password' when they typed the password. Changing a password is
+   allowed without the old one only on an OTP-proved session — that is the
+   forgot-password path, and it costs an attacker the phone, not just a
+   stolen token. */
+export const sign = (userId, epoch = 0, via = 'otp') =>
+  jwt.sign({ uid: userId, se: epoch, via }, SECRET, { expiresIn: EXPIRES });
 
 export function verify(token) {
   try { return jwt.verify(token, SECRET); } catch { return null; }
@@ -58,6 +64,7 @@ export async function requireAuth(req, res, next) {
 
   req.user = user;
   req.publicUser = publicUser(user);
+  req.authVia = payload.via || 'otp';   // older tokens predate the claim
   req.clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip;
   next();
 }

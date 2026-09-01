@@ -8,6 +8,7 @@ import path from 'node:path';
 import { col, nextId, now, audit, notify, withTransaction } from '../lib/db.js';
 import { requireAdmin } from '../lib/admin-auth.js';
 import { memoryStorage, ALLOWED_TYPES, saveFile } from '../lib/storage.js';
+import { NOT_BOT } from '../lib/bots.js';
 
 const qrUpload = multer({
   storage: memoryStorage,
@@ -27,10 +28,11 @@ const sum = async (coll, match, field = 'amount') => {
 /* ---------------- PLAYERS ---------------- */
 router.get('/players', async (req, res) => {
   const q = (req.query.q || '').trim();
-  let match = {};
+  // Lobby bots are house accounts with no wallet activity — never players.
+  let match = { ...NOT_BOT };
   if (q) {
     const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    match = { $or: [{ name: rx }, { phone: rx }, ...(Number.isInteger(Number(q)) ? [{ id: Number(q) }] : [])] };
+    match = { ...match, $or: [{ name: rx }, { phone: rx }, ...(Number.isInteger(Number(q)) ? [{ id: Number(q) }] : [])] };
   }
   const users = await col('users').find(match, { projection: { _id: 0, id: 1, name: 1, phone: 1, kyc_status: 1, banned: 1, created_at: 1 } })
     .sort({ created_at: -1 }).limit(50).toArray();
@@ -218,11 +220,11 @@ router.get('/charts', async (req, res) => {
   ]).toArray();
   tx.forEach(r => { put(r._id * day, 'deposits', r.deposits); put(r._id * day, 'withdrawals', r.withdrawals); });
   const signups = await col('users').aggregate([
-    { $match: { created_at: { $gte: from } } },
+    { $match: { created_at: { $gte: from }, ...NOT_BOT } },
     { $group: { _id: { $floor: { $divide: ['$created_at', day] } }, n: { $sum: 1 } } }]).toArray();
   signups.forEach(r => put(r._id * day, 'signups', r.n));
   const commission = await col('battles').aggregate([
-    { $match: { status: 'completed', settled_at: { $gte: from } } },
+    { $match: { status: 'completed', settled_at: { $gte: from }, ...NOT_BOT } },
     { $group: { _id: { $floor: { $divide: ['$settled_at', day] } }, c: { $sum: { $subtract: [{ $multiply: ['$amount', 2] }, { $ifNull: ['$payout', 0] }] } } } }]).toArray();
   commission.forEach(r => put(r._id * day, 'commission', r.c));
   res.json({ series: Object.values(byDay).sort((a, b) => a.date - b.date) });
@@ -230,8 +232,8 @@ router.get('/charts', async (req, res) => {
 
 router.get('/revenue', async (req, res) => {
   const from = since(req);
-  const s = await sum('battles', { status: 'completed', settled_at: { $gte: from } });
-  const paid = (await sum('battles', { status: 'completed', settled_at: { $gte: from } }, 'payout')).v;
+  const s = await sum('battles', { status: 'completed', settled_at: { $gte: from }, ...NOT_BOT });
+  const paid = (await sum('battles', { status: 'completed', settled_at: { $gte: from }, ...NOT_BOT }, 'payout')).v;
   const referralPaid = (await sum('transactions', { bucket: 'referral', type: 'credit', created_at: { $gte: from } })).v;
   const commission = Math.max(0, s.v * 2 - paid);
   res.json({ range: req.query.range || 'all', battlesSettled: s.n, totalStaked: s.v * 2,
@@ -240,10 +242,10 @@ router.get('/revenue', async (req, res) => {
 
 router.get('/pending-money', async (_req, res) => {
   res.json({
-    openStakes: await sum('battles', { status: { $in: ['open', 'waiting', 'running'] } }),
+    openStakes: await sum('battles', { status: { $in: ['open', 'waiting', 'running'] }, ...NOT_BOT }),
     pendingWithdrawals: await sum('withdrawal_requests', { status: 'pending' }),
     pendingDeposits: await sum('deposit_requests', { status: 'pending' }),
-    disputed: await sum('battles', { status: 'disputed' }),
+    disputed: await sum('battles', { status: 'disputed', ...NOT_BOT }),
   });
 });
 
@@ -297,7 +299,7 @@ router.get('/fraud/multi-account', async (_req, res) => {
 
 router.get('/fraud/collusion', async (_req, res) => {
   const rows = await col('battles').aggregate([
-    { $match: { status: 'completed', acceptor_id: { $ne: null } } },
+    { $match: { status: 'completed', acceptor_id: { $ne: null }, ...NOT_BOT } },
     { $project: { winner_id: 1,
         a: { $min: ['$creator_id', '$acceptor_id'] }, b: { $max: ['$creator_id', '$acceptor_id'] } } },
     { $group: { _id: { a: '$a', b: '$b' }, games: { $sum: 1 },

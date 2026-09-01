@@ -57,34 +57,35 @@ test('deposit bonus', async t => {
   });
 });
 
-/* ---------------- cancel window: 1 minute after the room code ---------------- */
+/* ---------------- cancel window: 10 minutes after the room code ---------------- */
 
 test('cancel window', async t => {
   const roomSetAt = 1_000_000;
   const created = roomSetAt - 60 * 60 * 1000;      // an hour earlier
+  const TEN_MIN = 10 * 60 * 1000;
 
-  await t.test('is one minute long', () => {
-    assert.equal(CANCEL_WINDOW_MS, 60 * 1000);
+  await t.test('is ten minutes long', () => {
+    assert.equal(CANCEL_WINDOW_MS, TEN_MIN);
   });
 
   await t.test('open the instant the room code goes up', () => {
     assert.equal(cancelWindowOpen(roomSetAt, created, roomSetAt), true);
   });
 
-  await t.test('still open just before the minute is up', () => {
-    assert.equal(cancelWindowOpen(roomSetAt, created, roomSetAt + 59_999), true);
+  await t.test('still open just before the ten minutes are up', () => {
+    assert.equal(cancelWindowOpen(roomSetAt, created, roomSetAt + TEN_MIN - 1), true);
   });
 
   await t.test('open exactly on the boundary', () => {
-    assert.equal(cancelWindowOpen(roomSetAt, created, roomSetAt + 60_000), true);
+    assert.equal(cancelWindowOpen(roomSetAt, created, roomSetAt + TEN_MIN), true);
   });
 
-  await t.test('closed one millisecond past the minute', () => {
-    assert.equal(cancelWindowOpen(roomSetAt, created, roomSetAt + 60_001), false);
+  await t.test('closed one millisecond past the window', () => {
+    assert.equal(cancelWindowOpen(roomSetAt, created, roomSetAt + TEN_MIN + 1), false);
   });
 
   await t.test('closed well after', () => {
-    assert.equal(cancelWindowOpen(roomSetAt, created, roomSetAt + 10 * 60_000), false);
+    assert.equal(cancelWindowOpen(roomSetAt, created, roomSetAt + 2 * TEN_MIN), false);
   });
 
   await t.test('measures from the room code, not from battle creation', () => {
@@ -94,7 +95,7 @@ test('cancel window', async t => {
 
   await t.test('falls back to creation time when no room code was set', () => {
     assert.equal(cancelWindowOpen(null, created, created + 30_000), true);
-    assert.equal(cancelWindowOpen(null, created, created + 61_000), false);
+    assert.equal(cancelWindowOpen(null, created, created + TEN_MIN + 1_000), false);
   });
 });
 

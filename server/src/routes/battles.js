@@ -62,6 +62,9 @@ router.get('/mine', requireAuth, async (req, res) => {
 router.get('/:id', optionalAuth, async (req, res) => {
   const b = await fetchBattle(req.params.id);
   if (!b) return res.status(404).json({ error: 'Battle not found.' });
+  // Lobby bots exist to fill the board, not to be opened. Nobody is a player
+  // in one, so there is nothing on the detail page for anyone to act on.
+  if (b.is_bot) return res.status(404).json({ error: 'Battle not found.' });
   const viewerId = req.user?.id ?? null;
   const claims = await col('battle_claims').find({ battle_id: b.id },
     { projection: { _id: 0, user_id: 1, claim: 1, reason: 1 } }).toArray();
@@ -120,6 +123,10 @@ router.post('/:id/accept', requireAuth, async (req, res) => {
       const b = await col('battles').findOne({ id }, { session });
       if (!b) throw new Error('NOTFOUND');
       if (b.status !== 'open') throw new Error('CLOSED');
+      /* A lobby bot has no wallet behind it and cannot play a real Ludo
+         match, so nobody joins one. It is only open for two or three seconds,
+         but a tap inside that window has to land somewhere honest. */
+      if (b.is_bot) throw new Error('CLOSED');
       if (b.creator_id === req.user.id) throw new Error('OWN');
       const already = await col('battles').findOne({ acceptor_id: req.user.id, status: { $in: ['requested', 'waiting', 'running'] } }, { session });
       if (already) throw new Error('ENROLLED');

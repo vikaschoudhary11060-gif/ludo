@@ -115,6 +115,11 @@ async function ensureIndexes() {
     d.collection('users').createIndex({ created_at: -1 }),
     d.collection('transactions').createIndex({ type: 1, bucket: 1, created_at: -1 }),
     d.collection('chat_threads').createIndex({ unread_admin: -1, last_at: -1 }),
+    /* Lobby bots: the engine sweeps by these on every tick, and every admin
+       figure filters battles and users on is_bot. */
+    d.collection('battles').createIndex({ is_bot: 1, status: 1 }),
+    d.collection('battles').createIndex({ is_bot: 1, bot_retire_at: 1 }, { sparse: true }),
+    d.collection('users').createIndex({ is_bot: 1 }),
   ]);
 }
 

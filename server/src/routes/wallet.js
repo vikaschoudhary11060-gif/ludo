@@ -4,7 +4,7 @@ import { SafeRouter } from '../lib/safe-router.js';
 import { z } from 'zod';
 import { col, nextId, now, credit, getWallet, notify, getSettings, withTransaction } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
-import { DEPOSIT, WITHDRAW, bonusFor, BONUS_LABEL, IS_DEV } from '../lib/config.js';
+import { DEPOSIT, WITHDRAW } from '../lib/config.js';
 import { methodForUser } from './payments.js';
 
 const router = SafeRouter();
@@ -24,29 +24,9 @@ router.get('/transactions', requireAuth, async (req, res) => {
   res.json({ transactions: rows });
 });
 
-/* POST /api/wallet/deposit — SIMULATED top-up.
-   This credits a wallet with no payment behind it, so it is a local testing
-   aid only. Exposed in production it is an unlimited free-money endpoint:
-   any signed-in user could mint balance and withdraw it. Real deposits go
-   through /deposit-request, which an admin verifies against the UTR. */
-router.post('/deposit', requireAuth, async (req, res) => {
-  if (!IS_DEV) return res.status(404).json({ error: 'Not found.' });
-  if (!(await getSettings()).deposit_open)
-    return res.status(503).json({ error: 'Deposits are temporarily closed. Please come back later.' });
-  const parsed = z.object({ amount: z.number().int().positive() }).safeParse(req.body || {});
-  if (!parsed.success) return res.status(400).json({ error: 'Enter a whole-rupee amount.' });
-  const { amount } = parsed.data;
-  if (amount < DEPOSIT.min) return res.status(400).json({ error: `Minimum deposit is ₹${DEPOSIT.min}.` });
-  if (amount > DEPOSIT.max) return res.status(400).json({ error: `Maximum deposit is ₹${DEPOSIT.max}.` });
-
-  const bonus = bonusFor(amount);
-  await withTransaction(async session => {
-    await credit(req.user.id, 'deposit', amount, 'Deposit', null, 'success', session);
-    if (bonus > 0) await credit(req.user.id, 'deposit', bonus, BONUS_LABEL, null, 'success', session);
-  });
-  const w = await getWallet(req.user.id);
-  res.json({ ok: true, credited: amount + bonus, bonus, wallet: { ...w, total: w.deposit + w.winnings } });
-});
+/* The simulated instant top-up that used to live here has been removed.
+   Every deposit now goes through /deposit-request, which an admin verifies
+   against the UTR before a rupee is credited. */
 
 /* POST /api/wallet/deposit-request  { amount, utr, proof? } */
 router.post('/deposit-request', requireAuth, async (req, res) => {

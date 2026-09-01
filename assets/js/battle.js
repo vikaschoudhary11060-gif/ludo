@@ -26,6 +26,16 @@
     const t = Math.max(0, Math.ceil(ms / 1000));
     return t < 60 ? `${t}s` : `${Math.floor(t / 60)}m ${String(t % 60).padStart(2, '0')}s`;
   };
+  /* A whole-unit description of the cancel window, e.g. "10 minutes". Seconds
+     rather than a rounded minute count when it is not a whole number, so the
+     copy never overstates how long a player actually has. */
+  const windowLabel = () => {
+    const secs = Math.round(cancelWindowMs / 1000);
+    const plural = (n, unit) => `${n} ${unit}${n === 1 ? '' : 's'}`;
+    if (secs < 60) return plural(secs, 'second');
+    if (secs % 60 === 0) return plural(secs / 60, 'minute');
+    return `${plural(Math.floor(secs / 60), 'minute')} ${plural(secs % 60, 'second')}`;
+  };
   /* Mirrors the server's cancelWindowOpen(): the window runs from the room
      code going up, falling back to battle creation when there is no room code
      yet. Treating a missing deadline as "open" offered a Cancel the server
@@ -65,6 +75,13 @@
     $('#p2-name').textContent = battle.acceptor ? battle.acceptor.name : 'Waiting…';
     $('#b-amount').textContent = money(battle.amount);
     $('#b-prize').textContent = money(payoutFor(battle.amount));
+    /* The rate is a server setting and depends on the stake, so read it
+       rather than printing a fixed percentage that goes stale the moment an
+       admin changes the tiers. */
+    if ($('#b-commission')) {
+      const pct = (K.commissionFor(battle.amount) * 100).toFixed(1).replace(/\.0$/, '');
+      $('#b-commission').textContent = `${pct}% commission`;
+    }
     $('#back-link').href = 'battles.html?mode=' + battle.mode;
 
     const [text, cls] = STATUS[battle.status] || STATUS.open;
@@ -80,6 +97,9 @@
     const canSet = isCreator() && battle.status === 'waiting';
 
     $('#room-section').hidden = settled || battle.status === 'requested' || battle.status === 'open';
+    // The install links exist to get you into the room; once it is settled
+    // they are just noise on the result screen.
+    if ($('#ludoking-section')) $('#ludoking-section').hidden = settled;
     $('#room-form').hidden = !canSet;
     $('#room-display').hidden = !battle.roomCode;
     if (battle.roomCode) $('#room-code').textContent = battle.roomCode;
@@ -175,8 +195,13 @@
     const parts = [];
     const deadline = cancelDeadline();
     if (deadline != null) {
+      /* Stated as a rule, not as a ticking clock. A live countdown on the
+         cancel option read as pressure to bail out, and the number came from
+         the device's clock — which is not the clock the server decides on.
+         The window length itself comes from /api/config, so this line can
+         never advertise a duration the server does not enforce. */
       parts.push(open
-        ? `You can still cancel for ${mmss(deadline - Date.now())}.`
+        ? `You can cancel within ${windowLabel()} of the room code going up.`
         : 'The cancel window has closed — play the match and report the result.');
     }
     if (battle.awaitingOpponent && battle.autoSettleAt) {
@@ -261,8 +286,27 @@
       const hadCode = battle && battle.roomCode;
       battle = b;
       load();                                   // refetch claims too
-      if (!hadCode && b.roomCode) toast('Room code received: ' + b.roomCode, 'success');
-      else if (wasStatus !== b.status) toast('Battle updated: ' + b.status, 'info');
+
+      /* The two moments worth interrupting someone for. Both arrive while the
+         player is almost certainly looking at the Ludo app rather than at
+         this screen, so they get a sound and a buzz, not a toast that fades
+         while nobody is watching. */
+      const alerts = window.KhelbroAlert;
+      const gotOpponent = isCreator() && wasStatus === 'open' && b.status === 'requested';
+      const matchStarted = isAcceptor() && !hadCode && !!b.roomCode;
+
+      if (gotOpponent && alerts) {
+        alerts.fire('Opponent found!',
+          `${(b.acceptor && b.acceptor.name) || 'A player'} wants to join your ${money(b.amount)} battle. Accept to start.`);
+      } else if (matchStarted && alerts) {
+        alerts.fire('The host has started the match',
+          `Open Ludo King and join room ${b.roomCode}.`);
+      } else if (!hadCode && b.roomCode) {
+        toast('Room code received: ' + b.roomCode, 'success');
+      } else if (wasStatus !== b.status) {
+        toast('Battle updated: ' + b.status, 'info');
+      }
+
       K.refresh().then(K.paint);                // balances may have moved
     });
     window.addEventListener('beforeunload', () => { clearInterval(tickTimer); K.leaveBattle(id); });

@@ -1,4 +1,7 @@
-/* Add cash — server-validated deposit. */
+/* Add cash — manual UPI only.
+
+   There is no instant top-up any more: the player pays our UPI ID or QR,
+   submits the UTR, and an admin credits the wallet after checking it. */
 (function () {
   'use strict';
   const K = window.Khelbro; const { $, $$, money, toast, copy } = K;
@@ -25,13 +28,11 @@
     const qrWrap = $('#qr-wrap');
     const qrLimitNote = $('#qr-limit-note');
     if (activeQrImage) {
-      if (amount > 2000) {
-        if (qrWrap) qrWrap.hidden = true;
-        if (qrLimitNote) qrLimitNote.classList.remove('hidden');
-      } else {
-        if (qrWrap) qrWrap.hidden = false;
-        if (qrLimitNote) qrLimitNote.classList.add('hidden');
-      }
+      /* A UPI QR carries a ₹2,000 ceiling for most banks, so above that the
+         code would simply fail at the payment app — show the ID instead. */
+      const overLimit = amount > 2000;
+      if (qrWrap) qrWrap.hidden = overLimit;
+      if (qrLimitNote) qrLimitNote.classList.toggle('hidden', !overLimit);
     } else {
       if (qrWrap) qrWrap.hidden = true;
       if (qrLimitNote) qrLimitNote.classList.add('hidden');
@@ -41,76 +42,69 @@
   K.ready.then(async () => {
     if (!K.requireSession()) return;
     let conf = {};
-    try { conf = await Api.config(); LIM = conf.deposit; BONUS = conf.bonus || null; } catch {}
+    try {
+      conf = await Api.config();
+      if (conf.deposit) LIM = conf.deposit;
+      BONUS = conf.bonus || null;
+    } catch {}
+
+    /* Deposits can be switched off from the admin console. Say so up front
+       rather than letting someone pay us and then fail on submit. */
+    if (conf.depositOpen === false) {
+      $('#deposit-closed').hidden = false;
+      $('#deposit-flow').hidden = true;
+      return;
+    }
+
     // Each player is assigned one of the active UPI/QR accounts.
     try {
       const { method } = await Api.wallet.depositMethod();
       if (method) {
         $('#upi-id-value').textContent = method.upiId;
         if (method.label) { const el = $('#upi-label'); if (el) el.textContent = method.label; }
-        if (method.qrImage) {
-          activeQrImage = method.qrImage;
-          $('#qr-img').src = (window.KHELBRO_API || '') + method.qrImage;
-          $('#qr-wrap').hidden = false;
-        }
+        if (method.qrImage) activeQrImage = method.qrImage;
       } else if (conf.upiId) {
         $('#upi-id-value').textContent = conf.upiId;
-        if (conf.qrImage) {
-          activeQrImage = conf.qrImage;
-          $('#qr-img').src = (window.KHELBRO_API || '') + conf.qrImage;
-          $('#qr-wrap').hidden = false;
-        }
+        if (conf.qrImage) activeQrImage = conf.qrImage;
       }
+      if (activeQrImage) $('#qr-img').src = (window.KHELBRO_API || '') + activeQrImage;
     } catch {}
-
-    /* The "Instant" route is a local simulator with no payment behind it.
-       When the server has it switched off, drop the chip entirely and start
-       on the real UPI route rather than offering a button that 404s. */
-    const showRoute = route => {
-      $$('[data-route]').forEach(b => b.classList.toggle('is-active', b.dataset.route === route));
-      const manual = route === 'manual';
-      $('#manual-route').hidden = !manual;
-      $('#pay-btn').hidden = manual;
-      $('#instant-note').hidden = manual;
-      if (manual) { paint(Number($('#deposit').value) || 0); renderRequests(); }
-    };
-
-    if (conf && conf.simulatedDeposit === false) {
-      const instantChip = $('[data-route="instant"]');
-      if (instantChip) instantChip.remove();
-      showRoute('manual');
-    }
-
-    // Route switch: instant vs pay-by-UPI
-    $$('[data-route]').forEach(btn =>
-      btn.addEventListener('click', () => showRoute(btn.dataset.route)));
 
     $('#copy-upi').addEventListener('click', () => copy($('#upi-id-value').textContent, 'UPI ID copied'));
 
     $('#utr').addEventListener('input', () => $('#utr-err').classList.add('hidden'));
     if ($('#proof-file')) $('#proof-file').addEventListener('change', () => $('#utr-err').classList.add('hidden'));
 
+    const failUtr = m => { $('#utr-err').textContent = m; $('#utr-err').classList.remove('hidden'); };
+
     $('#utr-btn').addEventListener('click', async () => {
       const amount = Number($('#deposit').value);
       const utr = $('#utr').value.trim();
       const proofFile = $('#proof-file') ? $('#proof-file').files[0] : null;
-      const fail = m => { $('#utr-err').textContent = m; $('#utr-err').classList.remove('hidden'); };
-      if (!amount) return fail('Choose an amount first.');
-      if (!utr) return fail('UTR number is required.');
-      if (utr.length < 10 || utr.length > 20) return fail('UTR number length should be between 10-20 characters.');
-      if (!proofFile) return fail('Please attach payment screenshot.');
+      if (!amount) return failUtr('Choose an amount first.');
+      if (amount < LIM.min) return failUtr(`Minimum deposit is ${money(LIM.min)}.`);
+      if (amount > LIM.max) return failUtr(`Maximum deposit is ${money(LIM.max)}.`);
+      if (!utr) return failUtr('UTR number is required.');
+      if (utr.length < 10 || utr.length > 20) return failUtr('UTR number length should be between 10-20 characters.');
 
       const btn = $('#utr-btn');
-      btn.disabled = true; btn.textContent = 'Uploading screenshot…';
+      btn.disabled = true;
       try {
-        const up = await Api.uploads.proof(proofFile);
+        /* The screenshot is optional, so a failed upload must not cost the
+           player their request — fall through and submit the UTR alone. */
+        let proofUrl;
+        if (proofFile) {
+          btn.textContent = 'Uploading screenshot…';
+          try { proofUrl = (await Api.uploads.proof(proofFile)).url; }
+          catch { toast('Screenshot could not be uploaded — sending the UTR on its own', 'info'); }
+        }
         btn.textContent = 'Submitting request…';
-        await Api.wallet.depositRequest(amount, utr, up.url);
+        await Api.wallet.depositRequest(amount, utr, proofUrl);
         toast('Deposit request submitted for verification', 'success');
         $('#utr').value = '';
         if ($('#proof-file')) $('#proof-file').value = '';
         await renderRequests();
-      } catch (err) { fail(err.message); }
+      } catch (err) { failUtr(err.message); }
       finally { btn.disabled = false; btn.textContent = 'Submit deposit request'; }
     });
 
@@ -144,26 +138,12 @@
     $('#deposit').addEventListener('input', e => {
       e.target.value = e.target.value.replace(/\D/g, '').slice(0, 5);
       $('#deposit-err').classList.add('hidden');
+      $('#utr-err').classList.add('hidden');
       $$('#amount-chips .chip').forEach(c => c.classList.remove('is-active'));
       paint(Number(e.target.value) || 0);
     });
 
-    $('#pay-btn').addEventListener('click', async () => {
-      const v = Number($('#deposit').value);
-      const btn = $('#pay-btn');
-      btn.disabled = true; btn.textContent = 'Processing…';
-      try {
-        const res = await Api.wallet.deposit(v);
-        toast(`${money(res.credited)} added to your wallet`, 'success');
-        await K.refresh(); K.paint();
-        setTimeout(() => (location.href = 'wallet.html'), 600);
-      } catch (err) {
-        $('#deposit-err').textContent = err.message;
-        $('#deposit-err').classList.remove('hidden');
-        $('#deposit').classList.add('field-error');
-        btn.disabled = false; btn.textContent = 'Add cash';
-      }
-    });
     paint(0);
+    renderRequests();
   });
 })();
