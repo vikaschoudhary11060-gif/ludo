@@ -127,10 +127,14 @@ async function emitCreated(io, id) {
   if (b) io.emit('battle:created', shape(b, null));
 }
 
-/** Put one open bot battle on the board and schedule its acceptance. */
+/** Put one running bot battle on the board.
+    Bot battles go straight into Running status so the open board only contains real players. */
 async function createOne(app, ids) {
   if (ids.length < 2) return null;
   const creator = pick(ids);
+  const remainingIds = ids.filter(uid => uid !== creator);
+  if (!remainingIds.length) return null;
+  const acceptor = pick(remainingIds);
   const rich = Math.random() < 0.15;
   const mode = rich ? 'rich' : 'lite';
   const amount = rich ? pick(RICH_STAKES) : pick(LITE_STAKES);
@@ -139,57 +143,28 @@ async function createOne(app, ids) {
   if (amount < cfg.min || amount > cfg.max || amount % cfg.step !== 0) return null;
 
   const id = newBattleId();
-  const acceptAt = now() + randInt(ACCEPT_MIN_MS, ACCEPT_MAX_MS);
   await col('battles').insertOne({
-    id, mode, amount, status: 'open', creator_id: creator, acceptor_id: null,
-    room_code: null, winner_id: null, payout: null, created_at: now(), settled_at: null,
-    /* Explicitly null, matching a real battle with no stake recorded — but
-       nothing will ever read them, because a bot battle cannot be refunded. */
+    id, mode, amount, status: 'running', creator_id: creator, acceptor_id: acceptor,
+    room_code: roomCode(), winner_id: null, payout: null, created_at: now(), settled_at: null,
+    room_set_at: now(),
     creator_stake: null, acceptor_stake: null,
-    is_bot: true, bot_accept_at: acceptAt,
-    /* A retirement stamp from the start, overwritten when it is accepted.
-       Without it, a battle whose acceptance never lands — the pool emptied,
-       every attempt lost its race — would sit open on the lobby forever,
-       showing a Play button that can only ever refuse. */
-    bot_retire_at: now() + LIFETIME_MAX_MS,
+    is_bot: true,
+    bot_retire_at: now() + randInt(LIFETIME_MIN_MS, LIFETIME_MAX_MS),
   });
 
-  await emitCreated(app?.get?.('io'), id);
-
-  /* The timer gives the exact two-to-three seconds. The sweep below is the
-     backstop: after a restart the timer is gone but `bot_accept_at` is not. */
-  const t = setTimeout(() => { acceptOne(app, id).catch(() => {}); }, acceptAt - now());
-  t.unref?.();
-  return id;
-}
-
-/** Move one open bot battle straight into Running with a second bot. */
-async function acceptOne(app, id) {
-  const b = await col('battles').findOne({ id, is_bot: true, status: 'open' });
-  if (!b) return false;                       // already accepted, or retired
-
-  const ids = (await botIds()).filter(uid => uid !== b.creator_id);
-  if (!ids.length) return false;
-
-  /* Guarded on the status it was read at, so the timer and the sweep cannot
-     both accept the same battle. */
-  const taken = await col('battles').updateOne(
-    { id, is_bot: true, status: 'open' },
-    { $set: { acceptor_id: pick(ids), status: 'running', room_code: roomCode(),
-              room_set_at: now(), bot_retire_at: now() + randInt(LIFETIME_MIN_MS, LIFETIME_MAX_MS) },
-      $unset: { bot_accept_at: '' } });
-  if (taken.matchedCount === 0) return false;
-
   const io = app?.get?.('io');
-  // Off the open board, onto the running one — the same pair of events a real
-  // acceptance produces, so the lobby needs no special case for bots.
-  io?.emit('battle:removed', { id });
-  await emitCreated(io, id);
-  return true;
+  if (io) {
+    const b = await fetchBattle(id);
+    if (b) io.emit('battle:created', shape(b, null));
+  }
+  return id;
 }
 
 /** Delete bot battles whose time is up, and tell the lobby they are gone. */
 async function retireExpired(app) {
+  // Also clean up any legacy open bot battles
+  await col('battles').deleteMany({ is_bot: true, status: { $in: ['open', 'requested', 'waiting'] } });
+
   const due = await col('battles')
     .find({ is_bot: true, bot_retire_at: { $lte: now() } }, { projection: { _id: 0, id: 1 } })
     .limit(50).toArray();
@@ -201,23 +176,14 @@ async function retireExpired(app) {
   return ids.length;
 }
 
-/** One pass: retire the old, accept anything the timers missed, top up. */
+/** One pass: retire the old, top up running bot matches. */
 export async function runBotTick(app) {
   await retireExpired(app);
 
-  // Restart backstop — battles whose accept timer died with the old process.
-  const stale = await col('battles')
-    .find({ is_bot: true, status: 'open', bot_accept_at: { $lte: now() } },
-      { projection: { _id: 0, id: 1 } }).limit(25).toArray();
-  for (const s of stale) await acceptOne(app, s.id);
-
-  const live = await col('battles').countDocuments({ is_bot: true, status: { $in: ['open', 'running'] } });
+  const live = await col('battles').countDocuments({ is_bot: true, status: 'running' });
   if (live >= TARGET_RUNNING) return { live, created: 0 };
 
   const ids = await botIds();
-  /* One per tick. Creating the whole shortfall at once produced a visible
-     burst of identical timestamps, which is exactly what it must not look
-     like. */
   const created = await createOne(app, ids);
   return { live, created: created ? 1 : 0 };
 }

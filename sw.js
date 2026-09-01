@@ -5,7 +5,7 @@
    still opens with no signal. API calls are network-first with
    no caching — balances and battles must never be stale.
    ============================================================ */
-const VERSION = 'khelbro-4a3d4d3817c7';
+const VERSION = 'khelbro-5cefa376b766';
 const SHELL = [
   '/', '/index.html', '/battles.html', '/battle.html', '/wallet.html', '/profile.html',
   '/leaderboard.html', '/how-to-play.html', '/support.html', '/login.html', '/offline.html',

@@ -48,6 +48,7 @@ router.get('/', optionalAuth, async (req, res) => {
   const mode = MODES[req.query.mode] ? req.query.mode : 'lite';
   const status = ['open', 'requested', 'waiting', 'running'].includes(req.query.status) ? req.query.status : null;
   const match = { mode, status: status ? status : { $in: ['open', 'requested', 'waiting', 'running'] } };
+  if (status === 'open' || !status) match.is_bot = { $ne: true };
   const rows = await fetchBattles(match, 100);
   res.json({ battles: rows.map(b => shape(b, req.user?.id ?? null)) });
 });
@@ -282,6 +283,7 @@ router.post('/:id/cancel', requireAuth, async (req, res) => {
 
       const plan = cancelPlan(b.status, {
         isCreator, isAcceptor, creatorId: b.creator_id, acceptorId: b.acceptor_id,
+        roomSetAt: b.room_set_at, createdAt: b.created_at,
       });
       if (!plan.allowed) throw new Error(plan.error);
 

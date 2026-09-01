@@ -42,7 +42,7 @@
 <link rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Saira+Semi+Condensed:wght@600;700&display=swap">
 <link rel="stylesheet" href="assets/css/app.css">
-<script>window.KHELBRO_API = "https://ludo-qu3q.onrender.com"; window.KHELBRO_BUILD = "4a3d4d3817c7";
+<script>window.KHELBRO_API = "https://ludo-qu3q.onrender.com"; window.KHELBRO_BUILD = "5cefa376b766";
 // Runs before paint so the theme never flashes.
 (function(){try{var t=localStorage.getItem('khelbro.theme')||
 (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
@@ -211,6 +211,12 @@ var l=localStorage.getItem('khelbro.lang');if(l)document.documentElement.lang=l;
               <span class="text-body font-bold text-ink" data-bind="balance">&#8377;0</span>
               <span aria-hidden="true" class="text-muted">&rsaquo;</span>
             </a>
+            <button class="tile-row" type="button" data-modal-open="bank-sheet">
+              <span class="tile-row__icon">&#127974;</span>
+              <span class="tile-row__label">Bank &amp; UPI Details</span>
+              <span class="text-meta text-muted" id="saved-payout-summary">Manage</span>
+              <span aria-hidden="true" class="text-muted">&rsaquo;</span>
+            </button>
             <button class="tile-row" type="button" data-modal-open="email-sheet">
               <span class="tile-row__icon">&#9993;</span>
               <span class="tile-row__label" id="email-label">Add Email</span>
@@ -369,6 +375,49 @@ var l=localStorage.getItem('khelbro.lang');if(l)document.documentElement.lang=l;
         </div>
       </div>
 
+      <!-- Bank & UPI Sheet -->
+      <div class="fixed inset-0 z-50 grid place-items-end justify-items-center bg-black/50" id="bank-sheet" data-modal hidden>
+        <div class="sheet animate-sheet-in max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="bank-sheet-title">
+          <div class="sheet-header sticky top-0 z-10 bg-surface">
+            <h2 class="font-display text-title text-ink" id="bank-sheet-title">Bank &amp; UPI Details</h2>
+            <button class="icon-btn !h-9 !w-9 !text-ink hover:!bg-line" type="button" data-modal-close aria-label="Close">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+          </div>
+          <form class="space-y-4 p-5" id="bank-profile-form" novalidate>
+            <p class="text-body-sm text-muted">Save your default payout details for fast and error-free withdrawals.</p>
+            <div>
+              <label class="pill-label mb-1.5 block text-muted-dark" for="profile-upi-id">UPI ID (e.g. name@okhdfcbank)</label>
+              <input class="field" id="profile-upi-id" type="text" placeholder="9876543210@ybl" autocomplete="off">
+            </div>
+            <div class="divider-x my-2"></div>
+            <p class="pill-label font-bold uppercase text-muted-dark">Bank Account Details</p>
+            <div>
+              <label class="pill-label mb-1.5 block text-muted-dark" for="profile-bank-name">Bank Name</label>
+              <select class="field" id="profile-bank-name">
+                <option value="">Select your bank</option>
+              </select>
+            </div>
+            <div>
+              <label class="pill-label mb-1.5 block text-muted-dark" for="profile-acc-name">Account Holder Name</label>
+              <input class="field" id="profile-acc-name" type="text" placeholder="Full name as per bank" autocomplete="name">
+            </div>
+            <div>
+              <label class="pill-label mb-1.5 block text-muted-dark" for="profile-acc-no">Account Number</label>
+              <input class="field" id="profile-acc-no" type="text" inputmode="numeric" placeholder="9 to 18 digits" maxlength="18">
+            </div>
+            <div>
+              <label class="pill-label mb-1.5 block text-muted-dark" for="profile-ifsc">IFSC Code</label>
+              <input class="field uppercase" id="profile-ifsc" type="text" placeholder="HDFC0001234" maxlength="11" autocapitalize="characters">
+            </div>
+            <p class="mt-1 hidden text-meta font-medium text-live" id="profile-bank-err" role="alert"></p>
+            <div class="pt-2">
+              <button class="btn btn-primary btn-block" type="submit" id="save-bank-btn">Save Payout Details</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
     </main>
 
     <div class="divider-x"></div>
@@ -429,6 +478,7 @@ var l=localStorage.getItem('khelbro.lang');if(l)document.documentElement.lang=l;
 <script src="assets/js/api.js" defer></script>
 <script src="assets/js/app.js" defer></script>
 <script src="assets/js/anim.js" defer></script>
+<script src="assets/js/banks.js" defer></script>
 <script src="assets/js/profile.js" defer></script>
 </body>
 </html>

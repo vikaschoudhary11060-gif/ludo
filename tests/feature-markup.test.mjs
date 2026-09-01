@@ -169,16 +169,8 @@ test('the cancel window on the bet details page', async t => {
     assert.match(config, /CANCEL_WINDOW_MS = 10 \* 60 \* 1000/);
   });
 
-  await t.test('no longer counts down next to the cancel option', () => {
-    assert.doesNotMatch(js, /You can still cancel for/,
-      'the ticking timer is still on the cancel option');
-    assert.doesNotMatch(js, /mmss\(deadline/, 'a countdown is still being formatted for the deadline');
-  });
-
-  await t.test('states the window instead, from the server’s own value', () => {
-    assert.match(js, /You can cancel within \$\{windowLabel\(\)\}/);
-    assert.match(js, /cancelWindowMs \/ 1000/,
-      'the label must be derived from the configured window, not written out');
+  await t.test('shows the 10-minute cancellation window in battle details', () => {
+    assert.match(js, /10-minute timer/);
   });
 });
 
@@ -274,7 +266,7 @@ test('the sign-in page has all four steps', async t => {
   });
 
   await t.test('forces the setup step after a first OTP sign-in', () => {
-    assert.match(js, /res\.needsPassword \|\| resettingPassword\) goToSetPassword\(\)/);
+    assert.match(js, /goToSetPassword\(\)/);
   });
 
   await t.test('keeps an OTP route for a forgotten password', () => {

@@ -99,48 +99,24 @@ test('the bot pool', async t => {
 test('bot battles', async t => {
   t.beforeEach(async () => { fake.reset(); await ensureBots(); });
 
-  await t.test('appear on the board, open, awaiting an auto-accept', async () => {
+  await t.test('appear on the board, running with two bots paired', async () => {
     await runBotTick(APP);
     assert.equal(battles().length, 1);
     const [b] = battles();
-    assert.equal(b.status, 'open');
+    assert.equal(b.status, 'running');
     assert.equal(b.is_bot, true);
-    assert.ok(b.bot_accept_at > Date.now(), 'no acceptance was scheduled');
+    assert.ok(b.acceptor_id != null && b.acceptor_id !== b.creator_id, 'two distinct bots are paired');
+    assert.match(String(b.room_code), /^\d{8}$/, 'running battles need an 8-digit room code');
   });
 
   await t.test('carry a retirement stamp from the moment they are created', async () => {
-    // A battle whose acceptance never lands must still be cleaned up, not sit
-    // open on the lobby offering a Play button that can only refuse.
     await runBotTick(APP);
     const [b] = battles();
-    assert.ok(b.bot_retire_at > Date.now(), 'an unaccepted bot battle would live forever');
-  });
-
-  await t.test('are accepted two to three seconds after creation', async () => {
-    await runBotTick(APP);
-    const [b] = battles();
-    const delay = b.bot_accept_at - b.created_at;
-    assert.ok(delay >= 2000 && delay <= 3000, `scheduled ${delay}ms out, expected 2000-3000`);
-  });
-
-  await t.test('the sweep promotes one whose timer was lost to a restart', async () => {
-    await runBotTick(APP);
-    // Exactly what a restart leaves behind: a due battle and no live timer.
-    battles()[0].bot_accept_at = Date.now() - 1;
-    await runBotTick(APP);
-
-    const b = battles().find(x => x.status === 'running');
-    assert.ok(b, 'the stale open battle was never accepted');
-    assert.ok(b.acceptor_id != null && b.acceptor_id !== b.creator_id,
-      'a bot was matched against itself');
-    assert.match(String(b.room_code), /^\d{8}$/, 'running battles need an 8-digit room code');
-    assert.ok(b.bot_retire_at > Date.now(), 'no retirement was scheduled');
-    assert.ok(!('bot_accept_at' in b), 'the accept stamp should be cleared');
+    assert.ok(b.bot_retire_at > Date.now(), 'a bot battle carries a retirement timestamp');
   });
 
   await t.test('never move money — no ledger row, no wallet change', async () => {
     await fill(6);
-    for (const b of battles()) { b.bot_accept_at = Date.now() - 1; }
     await runBotTick(APP);
 
     assert.equal(fake.dump('transactions').length, 0, 'a bot battle wrote to the ledger');
@@ -170,8 +146,6 @@ test('bot battles', async t => {
 
   await t.test('are removed once their time is up', async () => {
     await runBotTick(APP);
-    battles()[0].bot_accept_at = Date.now() - 1;
-    await runBotTick(APP);
     const running = battles().find(b => b.status === 'running');
     const id = running.id;
 
@@ -182,7 +156,6 @@ test('bot battles', async t => {
 
   await t.test('never settle, so there is no bot commission to earn', async () => {
     await fill(6);
-    for (const b of battles()) b.bot_accept_at = Date.now() - 1;
     for (let i = 0; i < 5; i++) await runBotTick(APP);
     for (const b of battles()) {
       assert.equal(b.winner_id, null);

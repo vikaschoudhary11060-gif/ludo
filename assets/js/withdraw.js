@@ -32,6 +32,19 @@
         window.KHELBRO_BANKS.map(b => `<option>${b}</option>`).join(''));
     }
 
+    // Pre-fill previously saved bank and UPI details if present
+    try {
+      const savedBank = JSON.parse(localStorage.getItem('khelbro.saved_bank') || 'null');
+      if (savedBank) {
+        if (savedBank.bankName && $('#bank-name')) $('#bank-name').value = savedBank.bankName;
+        if (savedBank.accountName && $('#acc-name')) $('#acc-name').value = savedBank.accountName;
+        if (savedBank.accountNumber && $('#acc-no')) $('#acc-no').value = savedBank.accountNumber;
+        if (savedBank.ifsc && $('#ifsc')) $('#ifsc').value = savedBank.ifsc;
+      }
+      const savedUpi = localStorage.getItem('khelbro.saved_upi');
+      if (savedUpi && $('#upi-id')) $('#upi-id').value = savedUpi;
+    } catch {}
+
     $$('[data-method]').forEach(btn => btn.addEventListener('click', () => {
       method = btn.dataset.method;
       $$('[data-method]').forEach(b => {
@@ -94,8 +107,17 @@
       }
       const btn = $('#wd-btn');
       btn.disabled = true; btn.textContent = 'Requesting…';
-      try {
         await Api.wallet.withdraw(payload);
+        if (method === 'upi') {
+          localStorage.setItem('khelbro.saved_upi', payload.upiId);
+        } else {
+          localStorage.setItem('khelbro.saved_bank', JSON.stringify({
+            bankName: payload.bankName,
+            accountName: payload.accountName,
+            accountNumber: payload.accountNumber,
+            ifsc: payload.ifsc
+          }));
+        }
         toast('Withdrawal requested', 'success');
         await K.refresh(); K.paint();
         setTimeout(() => (location.href = 'transactions.html'), 600);

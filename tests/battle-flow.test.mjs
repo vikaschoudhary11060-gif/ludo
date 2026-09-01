@@ -160,6 +160,32 @@ test('cancelling returns money to the bucket it came from', async t => {
     assert.equal(r.body.error, 'Only the host can cancel before the battle starts.');
   });
 
+  await t.test('a legacy battle with no recorded split still refunds to source', async () => {
+    /* Exactly the state the live database was left in by the build that ran
+       before the split was stored: the stake was taken and the ledger rows
+       written, but the battle document carries no creator_stake. Every one of
+       these used to refund straight into cash. */
+    const { host } = await twoPlayers();
+    const id = (await api.post('/api/battles', { mode: 'lite', amount: 2000 }, host.token)).body.battle.id;
+    await fake.col('battles').updateOne({ id }, { $unset: { creator_stake: '' } });
+    assert.equal((await fake.col('battles').findOne({ id })).creator_stake, undefined);
+
+    assert.equal((await api.post(`/api/battles/${id}/cancel`, { reason: 'changed_mind' }, host.token)).status, 200);
+    assert.deepEqual(await buckets(host.id), [1000, 1000],
+      'a battle predating the split turned winnings into cash');
+  });
+
+  await t.test('a legacy battle refunds both players to their own sources', async () => {
+    const { host, guest } = await twoPlayers({ deposit: 400, winnings: 5000 });
+    const id = await toWaiting(host, guest, 500);
+    await fake.col('battles').updateOne({ id },
+      { $unset: { creator_stake: '', acceptor_stake: '' } });
+
+    assert.equal((await api.post(`/api/battles/${id}/cancel`, { reason: 'no_room' }, host.token)).status, 200);
+    assert.deepEqual(await buckets(host.id), [400, 5000]);
+    assert.deepEqual(await buckets(guest.id), [400, 5000]);
+  });
+
   await t.test('every rupee is accounted for across the whole round trip', async () => {
     for (const start of [
       { deposit: 1000, winnings: 1000 },
@@ -313,11 +339,11 @@ test('lobby bots are decoration, not opponents', async t => {
     assert.equal((await api.get(`/api/battles/${id}`)).status, 404, 'even to an anonymous viewer');
   });
 
-  await t.test('but it still shows on the public lobby — that is the point', async () => {
+  await t.test('bot battles are excluded from the public open lobby', async () => {
     await botBattle();
     const r = await api.get('/api/battles?mode=lite&status=open');
     assert.equal(r.status, 200);
-    assert.deepEqual(r.body.battles.map(b => b.creator.name), ['RohitPlays']);
+    assert.deepEqual(r.body.battles.map(b => b.creator.name), []);
   });
 
   await t.test('a running bot battle never leaks a room code to onlookers', async () => {

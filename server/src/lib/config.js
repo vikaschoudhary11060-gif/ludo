@@ -86,8 +86,9 @@ export const CANCEL_REASON_IDS = CANCEL_REASONS.map(r => r.id);
     Before anyone joins, only the host can cancel and only the host has staked.
     Once the host accepts but no room code exists, the match is stuck: either
     player may cancel and BOTH stakes are returned, because both were taken.
-    After the room code goes up it has to be played and reported. */
-export function cancelPlan(status, { isCreator, isAcceptor, creatorId, acceptorId }) {
+    After the room code goes up (running status), a 10-minute cancellation timer applies
+    allowing either player to cancel and get refunded if the game did not start. */
+export function cancelPlan(status, { isCreator, isAcceptor, creatorId, acceptorId, roomSetAt, createdAt }) {
   if (!isCreator && !isAcceptor) return { allowed: false, error: 'FORBIDDEN' };
 
   if (status === 'open' || status === 'requested') {
@@ -96,6 +97,12 @@ export function cancelPlan(status, { isCreator, isAcceptor, creatorId, acceptorI
   }
   if (status === 'waiting') {
     return { allowed: true, refund: [creatorId, acceptorId].filter(id => id != null) };
+  }
+  if (status === 'running') {
+    if (cancelWindowOpen(roomSetAt, createdAt)) {
+      return { allowed: true, refund: [creatorId, acceptorId].filter(id => id != null) };
+    }
+    return { allowed: false, error: 'CLOSED' };
   }
   return { allowed: false, error: 'CLOSED' };
 }

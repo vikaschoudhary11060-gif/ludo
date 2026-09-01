@@ -297,8 +297,11 @@
         localStorage.removeItem('khelbro.referral');
         clearInterval(timer);
         toast(res.isNew && appliedReferral ? 'Welcome! Referral bonus activated 🎉' : 'Welcome to Khelbro!', 'success');
-        if (res.needsPassword || resettingPassword) goToSetPassword();
-        else goNext();
+        if (res.isNew || res.needsPassword || resettingPassword || res.user?.hasPassword === false) {
+          goToSetPassword();
+        } else {
+          goNext();
+        }
       } catch (err) {
         $('#otp-err').textContent = err.message;
         $('#otp-err').classList.remove('hidden');
@@ -346,7 +349,7 @@
     /* A session with no password yet: someone who closed the tab on the setup
        step. Finish it rather than letting them stay on the OTP path forever.
        Every handler above is bound by now, so the form actually works. */
-    if (K.state.user) {
+    if (K.state.user && K.state.user.hasPassword === false) {
       phone = K.state.user.phone || '';
       goToSetPassword();
     }

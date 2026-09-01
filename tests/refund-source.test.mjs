@@ -125,13 +125,74 @@ test('refund returns money to its source', async t => {
     assert.deepEqual([w.deposit, w.winnings], [200, 800]);
   });
 
-  await t.test('a battle with no recorded split falls back to deposit', async () => {
-    // Battles created before the split was recorded must still refund.
+  await t.test('a battle with no recorded split is rebuilt from the ledger', async () => {
+    /* The state the live database is in for every battle created before the
+       split was stored. The debit rows are still there, tagged with the
+       battle id, so the answer is recoverable — and has to be, or every
+       legacy battle refunds winnings as cash. */
+    seedWallet(HOST, { deposit: 400, winnings: 5000 });
+    await debit(HOST, 500, 'Battle stake', 'b1');       // ref_id = the battle
+    const r = await refundStake(null, battleWith({}), HOST, 'refund');   // no creator_stake
+
+    assert.equal(r.recorded, true, 'the ledger reconstruction did not run');
+    assert.equal(r.source, 'ledger');
+    const w = await getWallet(HOST);
+    assert.deepEqual([w.deposit, w.winnings], [400, 5000],
+      'a legacy battle still converted winnings into cash');
+  });
+
+  await t.test('the reported case, on a battle that never recorded a split', async () => {
+    // ₹1,000 cash + ₹1,000 winnings, a ₹2,000 battle, then cancel.
+    fake.reset();
+    seedWallet(HOST, { deposit: 1000, winnings: 1000 });
+    await debit(HOST, 2000, 'Battle stake', 'b1');
+    const b = { id: 'b1', amount: 2000, creator_id: HOST, acceptor_id: GUEST };  // no *_stake at all
+    await refundStake(null, b, HOST, 'Battle cancelled — refund');
+    const w = await getWallet(HOST);
+    assert.deepEqual([w.deposit, w.winnings], [1000, 1000],
+      'the winnings half came back as cash');
+  });
+
+  await t.test('only the ledger rows for this battle and this player count', async () => {
+    seedWallet(HOST, { deposit: 400, winnings: 5000 });
+    seedWallet(GUEST, { deposit: 5000, winnings: 0 });
+    await debit(HOST, 500, 'Battle stake', 'b1');
+    await debit(GUEST, 500, 'Battle stake', 'b1');      // the opponent's stake
+    await debit(HOST, 500, 'Battle stake', 'other');    // a different battle
+    const r = await refundStake(null, battleWith({}), HOST, 'refund');
+    assert.deepEqual([r.deposit, r.winnings], [400, 100]);
+  });
+
+  await t.test('falls back to deposit only when the ledger has nothing either', async () => {
     seedWallet(HOST, { deposit: 0, winnings: 0 });
     const r = await refundStake(null, battleWith({}), HOST, 'refund');
     assert.equal(r.recorded, false);
+    assert.equal(r.source, 'fallback');
     const w = await getWallet(HOST);
-    assert.deepEqual([w.deposit, w.winnings], [500, 0]);
+    assert.deepEqual([w.deposit, w.winnings], [500, 0], 'the player must still get their money');
+  });
+
+  await t.test('a refund credit is never mistaken for a stake debit', async () => {
+    /* The refund writes credit rows tagged with the same battle id. Reading
+       those back as part of the stake would make the total 1,000 against a
+       ₹500 battle, and the reconstruction would be discarded — sending an
+       otherwise recoverable refund down the deposit-only fallback.
+
+       Reconstructing twice is the check here, not a supported operation: the
+       routes claim the status transition before any money moves, so a battle
+       is only ever refunded once. */
+    seedWallet(HOST, { deposit: 400, winnings: 5000 });
+    await debit(HOST, 500, 'Battle stake', 'b1');
+    const first = await refundStake(null, battleWith({}), HOST, 'refund');
+    assert.deepEqual([first.deposit, first.winnings], [400, 100]);
+
+    const credits = fake.dump('transactions').filter(r => r.type === 'credit' && r.ref_id === 'b1');
+    assert.equal(credits.length, 2, 'the refund should have written its own rows');
+
+    const second = await refundStake(null, battleWith({}), HOST, 'refund');
+    assert.equal(second.source, 'ledger', 'the credits pushed it onto the fallback');
+    assert.deepEqual([second.deposit, second.winnings], [400, 100],
+      'the refund credits polluted the reconstruction');
   });
 
   await t.test('a split that does not add up is not trusted', async () => {
@@ -141,6 +202,16 @@ test('refund returns money to its source', async t => {
     assert.equal(r.recorded, false, 'a split that misses the amount is ignored');
     const w = await getWallet(HOST);
     assert.equal(w.deposit + w.winnings, 500, 'the player still gets the full stake back');
+  });
+
+  await t.test('a corrupt split is replaced by the ledger, not by the fallback', async () => {
+    seedWallet(HOST, { deposit: 400, winnings: 5000 });
+    await debit(HOST, 500, 'Battle stake', 'b1');
+    const r = await refundStake(null,
+      battleWith({ creator_stake: { deposit: 10, winnings: 10 } }), HOST, 'refund');
+    assert.equal(r.source, 'ledger');
+    const w = await getWallet(HOST);
+    assert.deepEqual([w.deposit, w.winnings], [400, 5000]);
   });
 
   await t.test('refunding a player who is not in the battle still returns their stake', async () => {

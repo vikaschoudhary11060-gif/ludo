@@ -14,21 +14,37 @@ import { SETTINGS_DEFAULTS } from './config.js';
 export { col, nextId, withTransaction, connect };
 export const now = () => Date.now();
 
-/* One-time: ensure the singleton settings document exists. */
+/* One-time: ensure the singleton settings document exists and active battles have recorded stakes. */
 export async function ensureSeed() {
   const existing = await col('settings').findOne({ id: 1 });
   if (!existing) {
     await col('settings').insertOne({ id: 1, ...SETTINGS_DEFAULTS });
-    return;
+  } else {
+    // Backfill any key an older settings document predates, so routes never
+    // read undefined for a number they are about to multiply.
+    const missing = Object.fromEntries(
+      Object.entries(SETTINGS_DEFAULTS).filter(([k]) => existing[k] === undefined));
+    if (Object.keys(missing).length) await col('settings').updateOne({ id: 1 }, { $set: missing });
   }
-  if (existing.referral_rate === 0.02) {
-    await col('settings').updateOne({ id: 1 }, { $set: { referral_rate: 0.01 } });
-  }
-  // Backfill any key a older settings document predates, so routes never
-  // read undefined for a number they are about to multiply.
-  const missing = Object.fromEntries(
-    Object.entries(SETTINGS_DEFAULTS).filter(([k]) => existing[k] === undefined));
-  if (Object.keys(missing).length) await col('settings').updateOne({ id: 1 }, { $set: missing });
+
+  // Ensure active battles have creator_stake recorded so refunds go back to original wallets
+  try {
+    const unbacked = await col('battles').find({
+      status: { $in: ['open', 'requested', 'waiting', 'running', 'disputed'] },
+      creator_stake: { $exists: false }
+    }).toArray();
+    for (const b of unbacked) {
+      if (!b.creator_id) continue;
+      const txs = await col('transactions').find({ ref_id: b.id, user_id: b.creator_id, type: 'debit' }).toArray();
+      let dep = 0, win = 0;
+      for (const t of txs) {
+        if (t.bucket === 'deposit') dep += t.amount;
+        if (t.bucket === 'winnings') win += t.amount;
+      }
+      const split = (dep + win === b.amount) ? { deposit: dep, winnings: win } : { deposit: b.amount, winnings: 0 };
+      await col('battles').updateOne({ id: b.id }, { $set: { creator_stake: split } });
+    }
+  } catch {}
 }
 
 /** Settings with every key guaranteed present and numeric fields sane. */

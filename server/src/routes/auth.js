@@ -254,8 +254,10 @@ router.post('/verify-otp', async (req, res) => {
   /* The client uses this to push the "create your password" step. Every
      account without a password gets it, not only brand-new ones, so accounts
      that predate passwords are brought across on their next sign-in. */
+  const hasPw = !!user.password_hash;
   res.json({ token: sign(user.id, user.session_epoch || 0, 'otp'),
-             user: publicUser(user), isNew, needsPassword: !user.password_hash,
+             user: { ...publicUser(user), hasPassword: hasPw }, isNew,
+             needsPassword: !hasPw,
              passwordRules: { min: PASSWORD_MIN, max: PASSWORD_MAX } });
 });
 

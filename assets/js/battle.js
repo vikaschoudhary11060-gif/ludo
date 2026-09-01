@@ -13,7 +13,7 @@
   let battle = null, claims = [], chosen = null;
   /* Server-owned windows, filled from /api/config. The literals are only a
      stand-in until that call returns — the server is always the authority. */
-  let cancelWindowMs = 60 * 1000, claimGraceMs = 10 * 60 * 1000;
+  let cancelWindowMs = 10 * 60 * 1000, claimGraceMs = 10 * 60 * 1000;
   let tickTimer = null;
 
   /* Status lines are cosmetic. Writing one must never be able to fail the
@@ -195,14 +195,12 @@
     const parts = [];
     const deadline = cancelDeadline();
     if (deadline != null) {
-      /* Stated as a rule, not as a ticking clock. A live countdown on the
-         cancel option read as pressure to bail out, and the number came from
-         the device's clock — which is not the clock the server decides on.
-         The window length itself comes from /api/config, so this line can
-         never advertise a duration the server does not enforce. */
-      parts.push(open
-        ? `You can cancel within ${windowLabel()} of the room code going up.`
-        : 'The cancel window has closed — play the match and report the result.');
+      if (open) {
+        const remaining = Math.max(0, deadline - Date.now());
+        parts.push(`⏱️ Cancellation available for ${mmss(remaining)} (10-minute timer).`);
+      } else {
+        parts.push('The 10-minute cancel window has closed — play the match and report the result.');
+      }
     }
     if (battle.awaitingOpponent && battle.autoSettleAt) {
       const left = battle.autoSettleAt - Date.now();

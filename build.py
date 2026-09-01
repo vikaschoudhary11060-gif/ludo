@@ -331,7 +331,7 @@ PAGES = [
   ('leaderboard.html',  'Leaderboard — Top Ludo Players | Khelbro',
    'See the top Ludo players on Khelbro. Daily, weekly and all-time rankings.', 'leaderboard.js'),
   ('profile.html',      'My Profile | Khelbro',
-   'Your Khelbro profile — avatar, KYC status, games played and referral earnings.', 'profile.js'),
+   'Your Khelbro profile — avatar, KYC status, games played and referral earnings.', 'banks.js, profile.js'),
   ('wallet.html',       'My Wallet | Khelbro',
    'Your Khelbro wallet balance, deposits, winnings and order history.', 'wallet.js'),
   ('add-cash.html',     'Add Cash | Khelbro',

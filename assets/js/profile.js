@@ -208,5 +208,88 @@
         await askForCode();          // straight into verification
       } catch (err) { toast(err.message, 'error'); }
     });
+
+    // Bank & UPI Sheet Handlers
+    const profileBankSel = $('#profile-bank-name');
+    if (profileBankSel && window.KHELBRO_BANKS) {
+      profileBankSel.insertAdjacentHTML('beforeend',
+        window.KHELBRO_BANKS.map(b => `<option>${b}</option>`).join(''));
+    }
+
+    function syncSavedBankDetails() {
+      try {
+        const savedBank = JSON.parse(localStorage.getItem('khelbro.saved_bank') || 'null');
+        const savedUpi = localStorage.getItem('khelbro.saved_upi') || '';
+        if (savedUpi && $('#profile-upi-id')) $('#profile-upi-id').value = savedUpi;
+        if (savedBank) {
+          if (savedBank.bankName && $('#profile-bank-name')) $('#profile-bank-name').value = savedBank.bankName;
+          if (savedBank.accountName && $('#profile-acc-name')) $('#profile-acc-name').value = savedBank.accountName;
+          if (savedBank.accountNumber && $('#profile-acc-no')) $('#profile-acc-no').value = savedBank.accountNumber;
+          if (savedBank.ifsc && $('#profile-ifsc')) $('#profile-ifsc').value = savedBank.ifsc;
+        }
+        const summary = $('#saved-payout-summary');
+        if (summary) {
+          if (savedBank?.accountNumber) summary.textContent = `A/C •••• ${savedBank.accountNumber.slice(-4)}`;
+          else if (savedUpi) summary.textContent = savedUpi.length > 15 ? savedUpi.slice(0, 12) + '…' : savedUpi;
+          else summary.textContent = 'Manage';
+        }
+      } catch {}
+    }
+
+    syncSavedBankDetails();
+
+    $$('[data-modal-open="bank-sheet"]').forEach(btn => {
+      btn.addEventListener('click', syncSavedBankDetails);
+    });
+
+    if ($('#bank-profile-form')) {
+      $('#profile-acc-no')?.addEventListener('input', e => {
+        e.target.value = e.target.value.replace(/\D/g, '').slice(0, 18);
+        $('#profile-bank-err')?.classList.add('hidden');
+      });
+      $('#profile-ifsc')?.addEventListener('input', e => {
+        e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11);
+        $('#profile-bank-err')?.classList.add('hidden');
+      });
+      $('#profile-upi-id')?.addEventListener('input', () => $('#profile-bank-err')?.classList.add('hidden'));
+
+      $('#bank-profile-form').addEventListener('submit', e => {
+        e.preventDefault();
+        const upiId = $('#profile-upi-id') ? $('#profile-upi-id').value.trim() : '';
+        const bankName = $('#profile-bank-name') ? $('#profile-bank-name').value : '';
+        const accountName = $('#profile-acc-name') ? $('#profile-acc-name').value.trim() : '';
+        const accountNumber = $('#profile-acc-no') ? $('#profile-acc-no').value.trim() : '';
+        const ifsc = $('#profile-ifsc') ? $('#profile-ifsc').value.trim().toUpperCase() : '';
+
+        const UPI_RE = /^[\w.\-]{2,}@[a-zA-Z]{2,}$/;
+        const ACCOUNT_RE = /^\d{9,18}$/;
+        const IFSC_RE = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+
+        const errEl = $('#profile-bank-err');
+        const showErr = msg => {
+          if (errEl) { errEl.textContent = msg; errEl.classList.remove('hidden'); }
+        };
+
+        if (upiId && !UPI_RE.test(upiId)) {
+          return showErr('Enter a valid UPI ID (e.g. 9876543210@ybl).');
+        }
+        if (accountNumber || ifsc || accountName || bankName) {
+          if (!bankName) return showErr('Select your bank.');
+          if (accountName.length < 3) return showErr('Enter full account holder name.');
+          if (!ACCOUNT_RE.test(accountNumber)) return showErr('Account number must be 9 to 18 digits.');
+          if (!IFSC_RE.test(ifsc)) return showErr('Enter a valid IFSC code (e.g. HDFC0001234).');
+        }
+
+        if (upiId) localStorage.setItem('khelbro.saved_upi', upiId);
+        if (bankName && accountNumber && ifsc) {
+          localStorage.setItem('khelbro.saved_bank', JSON.stringify({
+            bankName, accountName, accountNumber, ifsc
+          }));
+        }
+        syncSavedBankDetails();
+        $('#bank-sheet').hidden = true;
+        toast('Bank & UPI details saved successfully!', 'success');
+      });
+    }
   });
 })();
