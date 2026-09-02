@@ -351,6 +351,48 @@ html.anim main { animation: kb-safety 0s linear 1.2s forwards; }
   }
   .btn-outline .kb-ripple, .chip .kb-ripple { background: rgba(45,104,196,.25); }
 
+  /* ---------- moment scenes ----------
+     One fixed, click-through stage that anim.js drops a scene into and then
+     removes. Everything is CSS so the browser can composite it off the main
+     thread; the JS only creates the markup and sets a timer. */
+  .kb-stage {
+    position: fixed; inset: 0; z-index: 121; display: grid; place-items: center;
+    pointer-events: none;
+  }
+  .kb-scene { animation: kb-scene-in .3s cubic-bezier(.22,.61,.36,1) both; }
+  .kb-scene--out { animation: kb-scene-out .35s ease-in both; }
+
+  @keyframes kb-scene-in  { from { transform: scale(.6); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+  @keyframes kb-scene-out { to { transform: scale(1.08); opacity: 0 } }
+
+  /* The board rocks gently rather than spinning — a spin reads as "loading". */
+  .kb-board { animation: kb-board-rock 1.4s ease-in-out both; }
+  @keyframes kb-board-rock {
+    0%,100% { transform: rotate(-4deg) } 50% { transform: rotate(4deg) }
+  }
+
+  /* Each goti hops in turn, so the four read as pieces moving round a board. */
+  .kb-goti { animation: kb-hop .6s ease-in-out infinite; transform-origin: 50% 100%; }
+  @keyframes kb-hop { 0%,100% { transform: translateY(0) } 40% { transform: translateY(-9px) } }
+
+  /* Room-code digits, each landing a beat after the last. */
+  .kb-digit {
+    display: inline-block; animation: kb-digit-in .45s cubic-bezier(.22,.61,.36,1) both;
+  }
+  @keyframes kb-digit-in {
+    0%   { transform: translateY(-22px) rotate(-12deg); opacity: 0 }
+    70%  { transform: translateY(3px) rotate(3deg); opacity: 1 }
+    100% { transform: translateY(0) rotate(0); opacity: 1 }
+  }
+
+  /* The sad face sags a little; the tears fall from it on the canvas. */
+  .kb-sad { animation: kb-sad-drop 1.6s ease-in-out both; }
+  @keyframes kb-sad-drop {
+    0%   { transform: translateY(-10px) scale(1.05) }
+    60%  { transform: translateY(6px) scale(1) }
+    100% { transform: translateY(10px) scale(.96) }
+  }
+
   /* Press feedback everywhere a finger lands, applied globally. */
   .btn, .btn-play, .tile-row, .game-card, .money-box, .chip, .icon-btn {
     -webkit-tap-highlight-color: transparent;

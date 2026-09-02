@@ -472,6 +472,139 @@ test('the interface speaks Hindi by default', async t => {
 });
 
 /* ---------------------------------------------------------------- */
+test('the moment animations', async t => {
+  const anim = read('assets/js/anim.js');
+
+  await t.test('every moment has a preset', () => {
+    for (const kind of ['win', 'deposit', 'withdraw', 'start', 'code', 'loss']) {
+      assert.match(anim, new RegExp(`\\b${kind}:\\s*\\{`), `no preset for "${kind}"`);
+    }
+  });
+
+  await t.test('they all share one loop, not one effect each', () => {
+    /* The whole point of the refactor: adding a moment costs a line of
+       config. More than one requestAnimationFrame loop in here means the
+       effects have started diverging. */
+    assert.equal((anim.match(/requestAnimationFrame\(draw\)/g) || []).length, 1);
+    assert.equal((anim.match(/document\.createElement\('canvas'\)/g) || []).length, 1);
+  });
+
+  await t.test('the canvas is removed when the burst ends', () => {
+    // Otherwise every deposit leaves a full-screen element behind.
+    assert.match(anim, /else canvas\.remove\(\);/);
+  });
+
+  await t.test('does nothing when motion is reduced or the tab is hidden', () => {
+    assert.match(anim, /if \(reduce \|\| document\.hidden\) return;/,
+      'a backgrounded tab would queue frames it cannot draw');
+  });
+
+  await t.test('an unknown moment is a no-op, not a crash', () => {
+    /* These fire in the middle of a payout and a deposit; a typo at a call
+       site must not throw there. */
+    assert.match(anim, /const p = PRESETS\[kind\];\s*\n\s*if \(!p\) return;/);
+  });
+
+  await t.test('each themed moment has the scene that was asked for', () => {
+    assert.match(anim, /start:\s*\{ scene: board/, 'start should show the Ludo board');
+    assert.match(anim, /code:\s*\{ scene: digits/, 'the code should show its digits');
+    assert.match(anim, /loss:\s*\{ scene: sadFace/, 'a loss should show the sad face');
+    assert.match(anim, /withdraw:.*shape: 'note'/, 'a withdrawal should show money, not coins');
+  });
+
+  await t.test('the board is a real Ludo board — four homes, four goti', () => {
+    assert.match(anim, /const board = \(\) =>/);
+    assert.match(anim, /const LUDO = \['#e33d3d', '#28a745', '#f0b429', '#2d68c4'\]/,
+      'the goti must use the board colours');
+    assert.match(anim, /class="kb-goti"/);
+    assert.match(anim, /homes\.map/);
+  });
+
+  await t.test('the room code digits each get their own colour', () => {
+    assert.match(anim, /\[\.\.\.code\]\.map\(\(ch, i\) =>/);
+    assert.match(anim, /color:\$\{LUDO\[i % LUDO\.length\]\}/);
+    // Staggered, so they land one at a time rather than all at once.
+    assert.match(anim, /animation-delay:\$\{i \* 80\}ms/);
+  });
+
+  await t.test('a code scene with no code renders nothing', () => {
+    // mark('code') can only pass what the battle actually has.
+    assert.match(anim, /if \(!code\) return '';/);
+  });
+
+  await t.test('the tears fall from the face, not from the top of the screen', () => {
+    assert.match(anim, /shape: 'tear'.*atY: 0\.44/);
+    assert.match(anim, /o\.atY != null \? innerHeight \* o\.atY/);
+  });
+
+  await t.test('the scenes are CSS, not a second animation loop', () => {
+    /* The whole cost argument rests on this: the browser composites the
+       scenes, the JS only builds markup and sets a timer. */
+    assert.match(anim, /stage\.className = 'kb-stage'/);
+    assert.match(anim, /setTimeout\(\) => stage\.remove\(\), 400\)|stage\.remove\(\), 400\)/,
+      'the stage must be removed after it plays');
+    for (const cls of ['kb-stage', 'kb-scene', 'kb-board', 'kb-goti', 'kb-digit', 'kb-sad']) {
+      assert.ok(read('assets/css/app.css').includes(cls), `${cls} was purged from the stylesheet`);
+    }
+  });
+
+  await t.test('the win burst is unchanged from the confetti it replaced', () => {
+    assert.match(anim, /win:\s*\{ n: 200/, 'the win moment should look exactly as it did');
+  });
+
+  await t.test('no new dependency, no always-on loop', () => {
+    assert.doesNotMatch(anim, /import |require\(/, 'the animations must stay self-contained');
+    assert.doesNotMatch(anim, /setInterval/, 'nothing here should run continuously');
+  });
+});
+
+/* ---------------------------------------------------------------- */
+test('where the moment animations fire', async t => {
+  await t.test('a deposit request', () => {
+    const js = read('assets/js/addcash.js');
+    assert.match(js, /KhelbroAnim\.celebrate\('deposit'\)/);
+    // After the server accepted it, never before.
+    assert.ok(js.indexOf('Api.wallet.depositRequest') < js.indexOf("celebrate('deposit')"));
+  });
+
+  await t.test('a withdrawal request', () => {
+    const js = read('assets/js/withdraw.js');
+    assert.match(js, /KhelbroAnim\.celebrate\('withdraw'\)/);
+    assert.ok(js.indexOf('Api.wallet.withdraw(payload)') < js.indexOf("celebrate('withdraw')"));
+  });
+
+  await t.test('starting the match, and receiving the code', () => {
+    const js = read('assets/js/battle.js');
+    assert.match(js, /mark\('start'\)/, 'the host setting the room code');
+    assert.match(js, /mark\('code', \{ text: after\.roomCode \}\)/,
+      'the opponent receiving it — and the scene needs the digits to show');
+    assert.ok(js.indexOf('Api.battles.setRoom') < js.indexOf("mark('start')"));
+  });
+
+  await t.test('winning, and losing', () => {
+    const js = read('assets/js/battle.js');
+    assert.match(js, /if \(iWon\) mark\('win'\)/);
+    assert.match(js, /inBattle && battle\.status === 'completed'\) mark\('loss'\)/,
+      'a loss should not fire on a cancellation, a dispute, or for an onlooker');
+  });
+
+  await t.test('each moment fires once, however often the page re-renders', () => {
+    /* render() runs on every refresh and every socket update; without the
+       guard a settled battle would replay its animation on each one. */
+    const js = read('assets/js/battle.js');
+    assert.match(js, /const marked = new Set\(\);/);
+    assert.match(js, /if \(marked\.has\(kind\)\) return;/);
+  });
+
+  await t.test('a missing anim.js never breaks the action', () => {
+    for (const f of ['addcash.js', 'withdraw.js', 'battle.js']) {
+      assert.match(read(`assets/js/${f}`), /window\.KhelbroAnim && KhelbroAnim\.celebrate/,
+        `${f} calls the animation without checking it loaded`);
+    }
+  });
+});
+
+/* ---------------------------------------------------------------- */
 test('the admin alerts inbox', async t => {
   const page = read('admin.html');
   const js = read('assets/js/admin.js');

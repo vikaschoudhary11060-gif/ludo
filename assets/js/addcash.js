@@ -131,6 +131,7 @@
         btn.textContent = 'Submitting request…';
         await Api.wallet.depositRequest(amount, utr, proofUrl, currentMethod);
         toast('Deposit request submitted for verification', 'success');
+        window.KhelbroAnim && KhelbroAnim.celebrate('deposit');
         $('#utr').value = '';
         if ($('#proof-file')) $('#proof-file').value = '';
         await renderRequests();

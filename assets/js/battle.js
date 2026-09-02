@@ -51,6 +51,17 @@
     return at == null ? false : Date.now() <= at;
   };
 
+  /* Each moment is marked once per visit. render() runs on every refresh and
+     every socket update, so without this a settled battle would replay its
+     animation on each one. */
+  const marked = new Set();
+  function mark(kind, opts) {
+    if (marked.has(kind)) return;
+    marked.add(kind);
+    // A beat after the screen has changed, so the scene lands on the new view.
+    setTimeout(() => window.KhelbroAnim && KhelbroAnim.celebrate(kind, opts), 250);
+  }
+
   const STATUS = {
     open:      ['Waiting for an opponent to join',             'bg-gold/20 text-gold-deep'],
     requested: ['Opponent requested to join',                  'bg-brand/15 text-brand'],
@@ -148,10 +159,11 @@
     $('#settled-section').hidden = !settled && !(battle.status === 'disputed' && !battle.awaitingOpponent);
     if (settled || battle.status === 'disputed') {
       const iWon = battle.winnerId && me() && battle.winnerId === me().id;
-      if (iWon && !window.__confettiFired) {
-        window.__confettiFired = true;
-        setTimeout(() => window.KhelbroAnim && KhelbroAnim.confetti({ count: 200 }), 300);
-      }
+      const inBattle = isCreator() || isAcceptor();
+      if (iWon) mark('win');
+      // Only a settled loss, and only for someone who was actually playing —
+      // not a cancellation, a dispute, or an onlooker.
+      else if (inBattle && battle.status === 'completed') mark('loss');
       $('#settled-icon').textContent =
         battle.status === 'disputed' ? '⚖️' : battle.status === 'cancelled' ? '↩️' : iWon ? '🏆' : '😔';
       $('#settled-title').textContent =
@@ -267,6 +279,7 @@
         `${(after.acceptor && after.acceptor.name) || 'A player'} wants to join your ${money(after.amount)} battle. Accept to start.`);
     } else if (matchStarted && !announced.has('started')) {
       announced.add('started');
+      mark('code', { text: after.roomCode });
       alerts.fire('The host has started the match',
         `Open Ludo King and join room ${after.roomCode}.`);
     } else if (before.status !== after.status) {
@@ -383,6 +396,7 @@
         $('#room-err').classList.add('hidden');
         $('#room-input').value = '';
         toast('Room code set', 'success');
+        mark('start');
         await load();
       } catch (err) {
         $('#room-err').textContent = err.message;

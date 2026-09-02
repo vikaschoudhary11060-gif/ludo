@@ -122,6 +122,7 @@
           }));
         }
         toast('Withdrawal requested', 'success');
+        window.KhelbroAnim && KhelbroAnim.celebrate('withdraw');
         await K.refresh(); K.paint();
         setTimeout(() => (location.href = 'transactions.html'), 600);
       } catch (err) {
