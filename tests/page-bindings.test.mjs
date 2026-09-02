@@ -18,7 +18,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = p => fs.readFileSync(path.join(root, p), 'utf8');
 
 /* Elements a script creates at runtime rather than finding in the markup. */
-const CREATED_AT_RUNTIME = new Set(['live-dot']);
+const CREATED_AT_RUNTIME = new Set(['live-dot', 'notice-list-container', 'new-notice-input', 'add-notice-btn']);
 
 /** Which pages load each assets/js/<name>.js. */
 function scriptOwners() {

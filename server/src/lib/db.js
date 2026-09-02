@@ -52,12 +52,13 @@ export async function getSettings() {
   const row = (await col('settings').findOne({ id: 1 })) || {};
   const s = { ...SETTINGS_DEFAULTS, ...row };
   const num = (v, fallback) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : fallback);
-  s.commission           = num(s.commission,           SETTINGS_DEFAULTS.commission);
+  const numRate = (v, fallback) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback);
+  s.commission           = numRate(s.commission,           SETTINGS_DEFAULTS.commission);
   s.referral_rate        = typeof s.referral_rate === 'number' && Number.isFinite(s.referral_rate) ? s.referral_rate : SETTINGS_DEFAULTS.referral_rate;
   s.battle_limit         = num(s.battle_limit,         SETTINGS_DEFAULTS.battle_limit);
   s.commission_threshold = num(s.commission_threshold, SETTINGS_DEFAULTS.commission_threshold);
-  s.commission_under     = num(s.commission_under,     SETTINGS_DEFAULTS.commission_under);
-  s.commission_from      = num(s.commission_from,      SETTINGS_DEFAULTS.commission_from);
+  s.commission_under     = numRate(s.commission_under,     SETTINGS_DEFAULTS.commission_under);
+  s.commission_from      = numRate(s.commission_from,      SETTINGS_DEFAULTS.commission_from);
   s.signup_bonus         = typeof s.signup_bonus === 'number' && Number.isFinite(s.signup_bonus) ? s.signup_bonus : SETTINGS_DEFAULTS.signup_bonus;
   s.referral_bonus       = typeof s.referral_bonus === 'number' && Number.isFinite(s.referral_bonus) ? s.referral_bonus : SETTINGS_DEFAULTS.referral_bonus;
   s.notices              = Array.isArray(s.notices) ? s.notices : (s.notice ? [s.notice] : []);
