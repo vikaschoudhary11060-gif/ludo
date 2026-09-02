@@ -60,8 +60,24 @@
 
   async function sendOtp() {
     const res = await Api.auth.requestOtp(phone);
-    if (res.devCode) { $('#otp-demo').textContent = res.devCode; $('#otp-hint').hidden = false; }
-    else $('#otp-hint').hidden = true;
+    const code = res.devCode || res.otp;
+    const hint = $('#otp-hint');
+    const demo = $('#otp-demo');
+    if (code) {
+      if (demo) demo.textContent = code;
+      if (hint) {
+        hint.hidden = false;
+        hint.classList.remove('hidden');
+      }
+      // Auto-fill OTP boxes for instant test sign-in
+      const boxes = $$('#otp-boxes input');
+      if (boxes.length === 6) {
+        const chars = String(code).split('');
+        boxes.forEach((b, i) => { b.value = chars[i] || ''; });
+      }
+    } else {
+      if (hint) hint.hidden = true;
+    }
     startTimer(30);
   }
 

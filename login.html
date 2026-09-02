@@ -42,7 +42,7 @@
 <link rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Saira+Semi+Condensed:wght@600;700&display=swap">
 <link rel="stylesheet" href="assets/css/app.css">
-<script>window.KHELBRO_API = "https://ludo-qu3q.onrender.com"; window.KHELBRO_BUILD = "cfed4beae7bb";
+<script>window.KHELBRO_API = "https://ludo-qu3q.onrender.com"; window.KHELBRO_BUILD = "4dc57e2883d0";
 // Runs before paint so the theme never flashes.
 (function(){try{var t=localStorage.getItem('khelbro.theme')||
 (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
@@ -274,8 +274,10 @@ var l=localStorage.getItem('khelbro.lang');if(l)document.documentElement.lang=l;
                 That code doesn't match. Try again.
               </p>
 
-              <div class="mt-3 flex items-center justify-between text-meta text-white/85">
-                <span id="otp-hint" class="rounded bg-white/15 px-2 py-1">Demo code: <strong id="otp-demo">000000</strong></span>
+              <div class="mt-4 flex flex-col items-center gap-2 text-meta text-white/85">
+                <div id="otp-hint" class="rounded-lg bg-gold/20 border border-gold/40 px-4 py-2 text-center text-white shadow-sm">
+                  <span class="text-white/90 font-medium">OTP: </span><strong id="otp-demo" class="font-mono text-gold-light font-bold tracking-widest text-lg ml-1">000000</strong>
+                </div>
                 <span id="otp-timer" aria-live="polite">Resend in 30s</span>
               </div>
 

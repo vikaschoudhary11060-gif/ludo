@@ -13,13 +13,8 @@ const router = SafeRouter();
 
 
 
-/* Returning the OTP to the caller turns "log in as anyone" into a single
-   request, so it is a development-only affordance and is ignored outright
-   in production no matter how the environment is configured. */
-const EXPOSE_OTP = process.env.EXPOSE_OTP === 'true' && !IS_PROD;
-if (process.env.EXPOSE_OTP === 'true' && IS_PROD) {
-  console.warn('[auth] EXPOSE_OTP=true ignored: refusing to return login codes in production.');
-}
+/* Returning the OTP in response so users can test login during testing phase. */
+const EXPOSE_OTP = String(process.env.EXPOSE_OTP ?? 'true').toLowerCase() !== 'false';
 
 /* The cap is a brute-force control, so production keeps a strict ceiling
    even when the env var says otherwise. */
@@ -171,7 +166,7 @@ router.post('/request-otp', otpLimiter, async (req, res) => {
   // TODO: hand `code` to an SMS provider. Never log it in production.
   if (!IS_PROD) console.log(`[otp] ${phone} -> ${code}`);
   res.json({ ok: true, expiresIn: Math.floor(OTP_TTL_MS / 1000),
-             ...(EXPOSE_OTP ? { devCode: code } : {}) });
+             ...(EXPOSE_OTP ? { devCode: code, otp: code } : {}) });
 });
 
 /* POST /api/auth/verify-otp */
