@@ -307,16 +307,17 @@
         <table class="rtable w-full border-collapse text-body-sm">
           <thead><tr class="bg-accent-head text-left text-brand-dark">
             <th class="px-3 py-2.5 font-bold">Player</th><th class="px-3 py-2.5 font-bold">Amount</th>
-            <th class="px-3 py-2.5 font-bold">UTR</th><th class="px-3 py-2.5 font-bold">Proof</th>
-            <th class="px-3 py-2.5 font-bold">Status</th><th class="px-3 py-2.5 font-bold">When</th>
-            <th class="px-3 py-2.5"></th>
+            <th class="px-3 py-2.5 font-bold">Method</th><th class="px-3 py-2.5 font-bold">UTR / Ref</th>
+            <th class="px-3 py-2.5 font-bold">Proof</th><th class="px-3 py-2.5 font-bold">Status</th>
+            <th class="px-3 py-2.5 font-bold">When</th><th class="px-3 py-2.5"></th>
           </tr></thead>
           <tbody class="divide-y divide-line">
             ${requests.map(d => `<tr class="hover:bg-surface-page">
               <td data-label="Player" class="px-3 py-2.5"><span class="font-bold text-ink">${esc(d.name)}</span>
                   <span class="block text-meta text-muted">${esc(d.phone)}</span></td>
               <td data-label="Amount" class="px-3 py-2.5 font-black text-ink">${money(d.amount)}</td>
-              <td data-label="UTR" class="px-3 py-2.5 font-mono text-[11px]">${esc(d.utr)}</td>
+              <td data-label="Method" class="px-3 py-2.5"><span class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${d.method === 'bank' ? 'bg-brand/15 text-brand' : 'bg-cta/15 text-cta-deep'}">${d.method === 'bank' ? 'Bank Transfer' : 'UPI'}</span></td>
+              <td data-label="UTR / Ref" class="px-3 py-2.5 font-mono text-[11px]">${esc(d.utr)}</td>
               <td data-label="Proof" class="px-3 py-2.5">${shot(d.proof)}</td>
               <td data-label="Status" class="px-3 py-2.5">${pill(d.status)}</td>
               <td data-label="When" class="px-3 py-2.5 text-muted">${when(d.created_at)}</td>
@@ -324,7 +325,7 @@
                 <button class="btn btn-primary !min-h-[32px] !px-3 !text-[11px]" data-dep="${d.id}" data-approve="1">Approve</button>
                 <button class="btn btn-outline !min-h-[32px] !px-3 !text-[11px]" data-dep="${d.id}" data-approve="0">Reject</button>` : ''}</td>
             </tr>`).join('')}
-          </tbody></table></div>` : empty('No UPI deposit requests in this range.');
+          </tbody></table></div>` : empty('No deposit requests in this range.');
 
     const instantList = instant.length ? `
       <div class="mt-4 sm:overflow-x-auto sm:rounded-card sm:border sm:border-line sm:bg-surface">
@@ -830,8 +831,28 @@
           count('battle_limit', 'Max open battles per player') +
           `<label class="block">
              <span class="mb-1.5 block text-body text-ink">Deposit UPI ID</span>
-             <input class="field !h-9 w-full" value="${esc(settings.upi_id || '')}" data-set="upi_id" placeholder="name@bank">
+             <input class="field !h-9 w-full font-mono" value="${esc(settings.upi_id || '')}" data-set="upi_id" placeholder="name@bank">
            </label>`)}
+
+        ${group('Deposit Bank Account Details', 'Official company bank account details shown to players on the Add Cash page for Bank Transfer.',
+          `<div class="space-y-3">
+             <label class="block">
+               <span class="mb-1 block text-meta font-bold text-ink">Bank Name</span>
+               <input class="field !h-9 w-full" value="${esc(settings.bank_name || '')}" data-set="bank_name" placeholder="e.g. HDFC Bank">
+             </label>
+             <label class="block">
+               <span class="mb-1 block text-meta font-bold text-ink">Account Holder Name</span>
+               <input class="field !h-9 w-full" value="${esc(settings.bank_account_name || '')}" data-set="bank_account_name" placeholder="e.g. Khelbro Gaming Pvt Ltd">
+             </label>
+             <label class="block">
+               <span class="mb-1 block text-meta font-bold text-ink">Account Number</span>
+               <input class="field !h-9 w-full font-mono" value="${esc(settings.bank_account_number || '')}" data-set="bank_account_number" placeholder="e.g. 50200012345678">
+             </label>
+             <label class="block">
+               <span class="mb-1 block text-meta font-bold text-ink">IFSC Code</span>
+               <input class="field !h-9 w-full font-mono uppercase" value="${esc(settings.bank_ifsc || '')}" data-set="bank_ifsc" placeholder="e.g. HDFC0001234">
+             </label>
+           </div>`)}
       </div>
 
       ${group('Player notice', 'Shown at the top of the battles page, above the amount box. Leave empty to hide it.',

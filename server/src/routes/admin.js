@@ -442,6 +442,10 @@ router.patch('/settings', requireAdmin('owner'), async (req, res) => {
     signup_bonus: z.number().int().min(0).max(100000).optional(),
     referral_bonus: z.number().int().min(0).max(100000).optional(),
     upi_id: z.string().max(100).optional(),
+    bank_name: z.string().max(100).optional(),
+    bank_account_name: z.string().max(100).optional(),
+    bank_account_number: z.string().max(30).optional(),
+    bank_ifsc: z.string().max(20).optional(),
   }).safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid settings.' });
   const entries = Object.entries(parsed.data);

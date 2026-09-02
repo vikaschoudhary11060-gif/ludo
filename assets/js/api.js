@@ -174,8 +174,8 @@
 
     wallet: {
       get: () => request('/wallet'),
-      depositRequest: (amount, utr, proof) =>
-        request('/wallet/deposit-request', { method: 'POST', body: { amount, utr, proof } }),
+      depositRequest: (amount, utr, proof, method = 'upi') =>
+        request('/wallet/deposit-request', { method: 'POST', body: { amount, utr, proof, method } }),
       depositRequests: () => request('/wallet/deposit-requests'),
       depositMethod: () => request('/payments/deposit-method'),
       transactions: type => request('/wallet/transactions' + (type ? `?type=${type}` : '')),

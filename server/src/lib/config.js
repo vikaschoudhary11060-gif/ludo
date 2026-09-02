@@ -150,6 +150,10 @@ export const SETTINGS_DEFAULTS = {
   referral_bonus: 0,
   upi_id: 'khelbro@upi',
   qr_image: null,
+  bank_name: '',
+  bank_account_name: '',
+  bank_account_number: '',
+  bank_ifsc: '',
 };
 
 export const COMMISSION = SETTINGS_DEFAULTS.commission;

@@ -37,10 +37,11 @@ router.post('/deposit-request', requireAuth, async (req, res) => {
     utr: z.string().trim().min(10, 'UTR number length should be between 10-20 characters.')
                           .max(20, 'UTR number length should be between 10-20 characters.'),
     proof: z.string().max(500).optional().nullable(),
+    method: z.enum(['upi', 'bank']).optional().default('upi'),
   });
   const parsed = schema.safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const { amount, utr, proof } = parsed.data;
+  const { amount, utr, proof, method } = parsed.data;
   if (amount < DEPOSIT.min) return res.status(400).json({ error: `Minimum deposit is ₹${DEPOSIT.min}.` });
   if (amount > DEPOSIT.max) return res.status(400).json({ error: `Maximum deposit is ₹${DEPOSIT.max}.` });
 
@@ -51,6 +52,7 @@ router.post('/deposit-request', requireAuth, async (req, res) => {
   await col('deposit_requests').insertOne({
     id: await nextId('deposit_requests'), user_id: req.user.id, amount, utr,
     proof: proof || null,
+    method: method || 'upi',
     method_id: m ? m.id : null, status: 'pending', note: null, created_at: now(), settled_at: null,
   });
   res.status(201).json({ ok: true, status: 'pending' });
@@ -59,7 +61,7 @@ router.post('/deposit-request', requireAuth, async (req, res) => {
 /* GET /api/wallet/deposit-requests */
 router.get('/deposit-requests', requireAuth, async (req, res) => {
   const requests = await col('deposit_requests')
-    .find({ user_id: req.user.id }, { projection: { _id: 0, id: 1, amount: 1, utr: 1, proof: 1, status: 1, created_at: 1 } })
+    .find({ user_id: req.user.id }, { projection: { _id: 0, id: 1, amount: 1, utr: 1, proof: 1, method: 1, status: 1, created_at: 1 } })
     .sort({ created_at: -1 }).limit(50).toArray();
   res.json({ requests });
 });

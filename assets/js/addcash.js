@@ -39,6 +39,8 @@
     }
   }
 
+  let currentMethod = 'upi';
+
   K.ready.then(async () => {
     if (!K.requireSession()) return;
     let conf = {};
@@ -55,6 +57,36 @@
       $('#deposit-flow').hidden = true;
       return;
     }
+
+    // Method switcher
+    function setMethod(m) {
+      currentMethod = m;
+      const isUpi = m === 'upi';
+      if ($('#method-upi-btn')) {
+        $('#method-upi-btn').className = isUpi
+          ? 'flex items-center justify-center gap-2 rounded-tile border-2 border-brand bg-brand/10 p-3 font-bold text-brand transition'
+          : 'flex items-center justify-center gap-2 rounded-tile border border-line bg-surface p-3 font-bold text-muted transition hover:border-brand';
+      }
+      if ($('#method-bank-btn')) {
+        $('#method-bank-btn').className = !isUpi
+          ? 'flex items-center justify-center gap-2 rounded-tile border-2 border-brand bg-brand/10 p-3 font-bold text-brand transition'
+          : 'flex items-center justify-center gap-2 rounded-tile border border-line bg-surface p-3 font-bold text-muted transition hover:border-brand';
+      }
+      if ($('#method-upi-view')) $('#method-upi-view').classList.toggle('hidden', !isUpi);
+      if ($('#method-bank-view')) $('#method-bank-view').classList.toggle('hidden', isUpi);
+    }
+    if ($('#method-upi-btn')) $('#method-upi-btn').addEventListener('click', () => setMethod('upi'));
+    if ($('#method-bank-btn')) $('#method-bank-btn').addEventListener('click', () => setMethod('bank'));
+
+    // Populate bank details from server config
+    if (conf.bankDetails) {
+      if ($('#bank-name-val') && conf.bankDetails.bankName) $('#bank-name-val').textContent = conf.bankDetails.bankName;
+      if ($('#bank-holder-val') && conf.bankDetails.accountName) $('#bank-holder-val').textContent = conf.bankDetails.accountName;
+      if ($('#bank-acc-val') && conf.bankDetails.accountNumber) $('#bank-acc-val').textContent = conf.bankDetails.accountNumber;
+      if ($('#bank-ifsc-val') && conf.bankDetails.ifsc) $('#bank-ifsc-val').textContent = conf.bankDetails.ifsc;
+    }
+    if ($('#copy-bank-acc')) $('#copy-bank-acc').addEventListener('click', () => copy($('#bank-acc-val').textContent, 'Account number copied'));
+    if ($('#copy-bank-ifsc')) $('#copy-bank-ifsc').addEventListener('click', () => copy($('#bank-ifsc-val').textContent, 'IFSC code copied'));
 
     // Each player is assigned one of the active UPI/QR accounts.
     try {
@@ -84,22 +116,20 @@
       if (!amount) return failUtr('Choose an amount first.');
       if (amount < LIM.min) return failUtr(`Minimum deposit is ${money(LIM.min)}.`);
       if (amount > LIM.max) return failUtr(`Maximum deposit is ${money(LIM.max)}.`);
-      if (!utr) return failUtr('UTR number is required.');
-      if (utr.length < 10 || utr.length > 20) return failUtr('UTR number length should be between 10-20 characters.');
+      if (!utr) return failUtr('UTR / reference number is required.');
+      if (utr.length < 10 || utr.length > 20) return failUtr('UTR / reference number length should be between 10-20 characters.');
 
       const btn = $('#utr-btn');
       btn.disabled = true;
       try {
-        /* The screenshot is optional, so a failed upload must not cost the
-           player their request — fall through and submit the UTR alone. */
         let proofUrl;
         if (proofFile) {
           btn.textContent = 'Uploading screenshot…';
           try { proofUrl = (await Api.uploads.proof(proofFile)).url; }
-          catch { toast('Screenshot could not be uploaded — sending the UTR on its own', 'info'); }
+          catch { toast('Screenshot could not be uploaded — sending reference on its own', 'info'); }
         }
         btn.textContent = 'Submitting request…';
-        await Api.wallet.depositRequest(amount, utr, proofUrl);
+        await Api.wallet.depositRequest(amount, utr, proofUrl, currentMethod);
         toast('Deposit request submitted for verification', 'success');
         $('#utr').value = '';
         if ($('#proof-file')) $('#proof-file').value = '';
@@ -119,8 +149,11 @@
           ${r.proof ? `<a href="${apiHost + r.proof}" target="_blank" rel="noopener" class="shrink-0">
             <img src="${apiHost + r.proof}" alt="receipt" class="h-10 w-10 rounded border border-line object-cover"></a>` : ''}
           <span class="flex-1 min-w-0">
-            <span class="block text-body font-bold text-ink">${money(r.amount)}</span>
-            <span class="block text-meta text-muted truncate">UTR ${r.utr}</span>
+            <span class="flex items-center gap-2">
+              <span class="text-body font-bold text-ink">${money(r.amount)}</span>
+              <span class="rounded bg-brand/10 px-1.5 py-0.5 text-[10px] font-bold uppercase text-brand">${r.method === 'bank' ? 'Bank' : 'UPI'}</span>
+            </span>
+            <span class="block text-meta text-muted truncate">Ref ${r.utr}</span>
           </span>
           <span class="rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase ${tone[r.status] || ''}">${r.status}</span>
         </li>`).join('');

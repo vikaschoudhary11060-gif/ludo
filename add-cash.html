@@ -42,7 +42,7 @@
 <link rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Saira+Semi+Condensed:wght@600;700&display=swap">
 <link rel="stylesheet" href="assets/css/app.css">
-<script>window.KHELBRO_API = "https://ludo-qu3q.onrender.com"; window.KHELBRO_BUILD = "5cefa376b766";
+<script>window.KHELBRO_API = "https://ludo-qu3q.onrender.com"; window.KHELBRO_BUILD = "45134cb1359c";
 // Runs before paint so the theme never flashes.
 (function(){try{var t=localStorage.getItem('khelbro.theme')||
 (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
@@ -198,26 +198,77 @@ var l=localStorage.getItem('khelbro.lang');if(l)document.documentElement.lang=l;
 
           <!-- Step 2 — pay -->
           <section class="section">
-            <p class="pill-label text-muted-dark">Step 2 &middot; Pay this exact amount</p>
-            <h2 class="section-title mt-1">Scan the QR or pay to our UPI ID</h2>
-            <p class="text-meta text-muted" id="upi-label"></p>
+            <p class="pill-label text-muted-dark">Step 2 &middot; Choose payment method</p>
+            <h2 class="section-title mt-1">Select UPI or Bank Transfer</h2>
 
-            <div id="qr-wrap" class="mt-3 text-center" hidden>
-              <img id="qr-img" src="" alt="Scan to pay" width="192" height="192"
-                   class="mx-auto h-48 w-48 rounded-tile border border-line bg-white p-2 object-contain">
-              <p class="mt-1 text-meta text-muted">Scan with any UPI app (up to &#8377;2,000)</p>
+            <div class="mt-3 grid grid-cols-2 gap-2" role="tablist">
+              <button class="flex items-center justify-center gap-2 rounded-tile border-2 border-brand bg-brand/10 p-3 font-bold text-brand transition" type="button" id="method-upi-btn" data-method="upi">
+                <span>📱</span>
+                <span>UPI / QR</span>
+              </button>
+              <button class="flex items-center justify-center gap-2 rounded-tile border border-line bg-surface p-3 font-bold text-muted transition hover:border-brand" type="button" id="method-bank-btn" data-method="bank">
+                <span>🏦</span>
+                <span>Bank Transfer</span>
+              </button>
             </div>
 
-            <div id="qr-limit-note" class="mt-3 hidden rounded-tile border-l-4 border-gold bg-gold/10 p-3">
-              <p class="text-meta text-ink">
-                <strong>Note:</strong> QR payments are limited to &#8377;2,000. For payments above
-                &#8377;2,000, please copy and pay directly to the UPI ID below.
-              </p>
+            <!-- UPI View -->
+            <div id="method-upi-view" class="mt-4">
+              <p class="text-meta text-muted" id="upi-label">Scan the QR or pay directly to our official UPI ID:</p>
+
+              <div id="qr-wrap" class="mt-3 text-center" hidden>
+                <img id="qr-img" src="" alt="Scan to pay" width="192" height="192"
+                     class="mx-auto h-48 w-48 rounded-tile border border-line bg-white p-2 object-contain">
+                <p class="mt-1 text-meta text-muted">Scan with any UPI app (up to &#8377;2,000)</p>
+              </div>
+
+              <div id="qr-limit-note" class="mt-3 hidden rounded-tile border-l-4 border-gold bg-gold/10 p-3">
+                <p class="text-meta text-ink">
+                  <strong>Note:</strong> QR payments are limited to &#8377;2,000. For payments above
+                  &#8377;2,000, please copy and pay directly to the UPI ID below.
+                </p>
+              </div>
+
+              <div class="mt-3 flex items-center gap-2 rounded-tile border-2 border-dashed border-brand bg-brand/5 p-3">
+                <code class="flex-1 text-body font-bold text-ink" id="upi-id-value">khelbro@upi</code>
+                <button class="btn btn-outline !min-h-[38px] !px-4 !text-meta" type="button" id="copy-upi">Copy</button>
+              </div>
             </div>
 
-            <div class="mt-3 flex items-center gap-2 rounded-tile border-2 border-dashed border-brand bg-brand/5 p-3">
-              <code class="flex-1 text-body font-bold text-ink" id="upi-id-value">khelbro@upi</code>
-              <button class="btn btn-outline !min-h-[38px] !px-4 !text-meta" type="button" id="copy-upi">Copy</button>
+            <!-- Bank Transfer View -->
+            <div id="method-bank-view" class="mt-4 hidden">
+              <p class="text-meta text-muted">Transfer the exact amount to our official bank account via IMPS, NEFT, or RTGS:</p>
+
+              <div class="mt-3 space-y-2.5 rounded-tile border border-line bg-surface p-3.5 shadow-sm">
+                <div class="flex items-center justify-between border-b border-line pb-2">
+                  <span class="text-meta text-muted">Bank Name</span>
+                  <span class="text-body-sm font-bold text-ink" id="bank-name-val">—</span>
+                </div>
+                <div class="flex items-center justify-between border-b border-line pb-2">
+                  <span class="text-meta text-muted">Account Holder</span>
+                  <span class="text-body-sm font-bold text-ink" id="bank-holder-val">—</span>
+                </div>
+                <div class="flex items-center justify-between border-b border-line pb-2">
+                  <span class="text-meta text-muted">Account Number</span>
+                  <div class="flex items-center gap-2">
+                    <span class="font-mono text-body font-bold text-ink" id="bank-acc-val">—</span>
+                    <button class="rounded bg-brand/10 px-2.5 py-1 text-[11px] font-bold text-brand hover:bg-brand hover:text-white" type="button" id="copy-bank-acc">Copy</button>
+                  </div>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-meta text-muted">IFSC Code</span>
+                  <div class="flex items-center gap-2">
+                    <span class="font-mono text-body font-bold text-brand" id="bank-ifsc-val">—</span>
+                    <button class="rounded bg-brand/10 px-2.5 py-1 text-[11px] font-bold text-brand hover:bg-brand hover:text-white" type="button" id="copy-bank-ifsc">Copy</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-3 rounded-tile border-l-4 border-brand bg-brand/5 p-3">
+                <p class="text-meta text-ink">
+                  <strong>Important:</strong> After transferring from your banking app, copy the <strong>UTR / IMPS Reference Number</strong> and submit it in Step 3 below.
+                </p>
+              </div>
             </div>
           </section>
 

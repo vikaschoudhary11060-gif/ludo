@@ -72,6 +72,12 @@ app.get('/api/config', async (_req, res) => {
     },
     withdrawOpen: !!s.withdraw_open, depositOpen: !!s.deposit_open,
     maintenance: !!s.maintenance, notice: s.notice, upiId: s.upi_id, qrImage: s.qr_image,
+    bankDetails: {
+      bankName: s.bank_name || '',
+      accountName: s.bank_account_name || '',
+      accountNumber: s.bank_account_number || '',
+      ifsc: s.bank_ifsc || '',
+    },
     bonus: { per: BONUS_PER, amount: BONUS_AMOUNT },
     signupBonus: { signup: s.signup_bonus || 0, referral: s.referral_bonus || 0 },
     /* The instant top-up is gone: every deposit is paid to our UPI/QR and
