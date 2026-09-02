@@ -5,19 +5,28 @@
      2. An opponent learns the host has started the match.
 
    Both happen while the player is very likely looking at
-   something else, so an alert is a banner, a sound and a buzz
-   rather than a line of text that scrolls past.
+   something else — usually the Ludo app — so an alert rings for
+   five seconds rather than making one sound they can miss while
+   the phone is face down.
 
    The tone is synthesised rather than loaded: an audio file is
    another request that can 404, be blocked by the service worker
-   or arrive after the moment has passed. Two sine notes through
+   or arrive after the moment has passed. Sine notes through
    WebAudio always play, offline included.
    ============================================================ */
 (function () {
   'use strict';
 
+  /* How long the alert keeps ringing. */
+  const ALERT_MS = 5000;
+  /* One two-note chirp every 620ms — a rhythm that reads as "answer me"
+     rather than a single ping that is over before a phone is picked up. */
+  const PERIOD = 0.62;
+
   let ctx = null;
   let unlocked = false;
+  let ringing = [];          // oscillators currently scheduled
+  let stopTimer = null;
 
   /* Browsers only let audio start from a user gesture, and the gesture that
      matters here happened minutes ago — the tap that created or joined the
@@ -29,43 +38,82 @@
       if (!AC) return;
       ctx = ctx || new AC();
       if (ctx.state === 'suspended') ctx.resume();
-      unlocked = true;
+      unlocked = ctx.state === 'running';
     } catch { /* no audio on this device; the banner still shows */ }
   }
 
+  /* Not `once: true`: the first gesture can land while the tab is still
+     loading and leave the context suspended, and on iOS a context can be
+     suspended again whenever the page is backgrounded. Re-running on every
+     gesture is cheap and keeps it live. */
   ['pointerdown', 'keydown', 'touchstart'].forEach(ev =>
-    document.addEventListener(ev, unlock, { once: true, passive: true }));
+    document.addEventListener(ev, unlock, { passive: true }));
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && ctx && ctx.state === 'suspended') unlock();
+  });
 
-  /** Two short notes. `rising` is the "good news" shape used for both events. */
-  function chime(rising = true) {
-    if (!ctx) unlock();
+  /** Silence an alert that is still ringing. */
+  function stop() {
+    clearTimeout(stopTimer);
+    stopTimer = null;
+    for (const osc of ringing) {
+      try { osc.stop(); } catch { /* already finished */ }
+      try { osc.disconnect(); } catch {}
+    }
+    ringing = [];
+    try { if (navigator.vibrate) navigator.vibrate(0); } catch {}
+  }
+
+  /** Ring for `ms`. Returns false when audio is unavailable. */
+  function ring(ms = ALERT_MS) {
+    if (!ctx || ctx.state !== 'running') unlock();
     if (!ctx || ctx.state !== 'running') return false;
-    const notes = rising ? [660, 990] : [990, 660];
+
+    // A second alert replaces the first rather than layering on top of it.
+    stop();
+
     const start = ctx.currentTime;
-    notes.forEach((hz, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = hz;
-      /* Normal listening volume, and ramped rather than switched — a square
-         start on a phone speaker clicks loudly enough to be unpleasant. */
-      const at = start + i * 0.18;
-      gain.gain.setValueAtTime(0.0001, at);
-      gain.gain.exponentialRampToValueAtTime(0.35, at + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.17);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(at);
-      osc.stop(at + 0.2);
-    });
+    const seconds = ms / 1000;
+    /* Scheduled on the audio clock in one go, not driven by setInterval: a
+       timer drifts, and a backgrounded tab throttles it to once a second or
+       stops it altogether — exactly when the alert matters most. */
+    for (let at = 0; at < seconds; at += PERIOD) {
+      [660, 990].forEach((hz, i) => {
+        const t = at + i * 0.16;
+        if (t >= seconds) return;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = hz;
+        /* Normal listening volume, and ramped rather than switched — a square
+           start on a phone speaker clicks loudly enough to be unpleasant. */
+        const from = start + t;
+        gain.gain.setValueAtTime(0.0001, from);
+        gain.gain.exponentialRampToValueAtTime(0.4, from + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, from + 0.15);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(from);
+        osc.stop(from + 0.18);
+        ringing.push(osc);
+      });
+    }
+    // Clear the bookkeeping once the last note has played.
+    stopTimer = setTimeout(() => { ringing = []; stopTimer = null; }, ms + 200);
     return true;
   }
 
-  function buzz(pattern) {
-    try { if (navigator.vibrate) navigator.vibrate(pattern); } catch {}
+  /** Buzz in the same rhythm, for the same duration. */
+  function buzz(ms = ALERT_MS) {
+    try {
+      if (!navigator.vibrate) return;
+      const pattern = [];
+      for (let at = 0; at < ms; at += 620) pattern.push(300, 320);
+      navigator.vibrate(pattern);
+    } catch {}
   }
 
   let host = null;
-  function banner(title, body) {
+  function banner(title, body, onDismiss) {
     if (!host) {
       host = document.createElement('div');
       host.className =
@@ -91,24 +139,30 @@
     el.querySelector('strong + span').textContent = body || '';
 
     const close = () => {
+      if (onDismiss) onDismiss();
       el.style.opacity = '0';
       el.style.transform = 'translateY(-8px)';
       setTimeout(() => el.remove(), 260);
     };
     el.querySelector('button').addEventListener('click', close);
     host.appendChild(el);
-    /* Eight seconds: long enough to catch someone glancing back at the phone,
-       short enough not to sit over the board. */
-    setTimeout(close, 8000);
+    /* Ten seconds: the ring lasts five, and the message has to still be on
+       screen when someone picks the phone up because of it. */
+    setTimeout(close, 10000);
     return el;
   }
 
-  /** The whole alert: banner, sound, buzz. Safe to call from any page. */
+  /** The whole alert: banner, five seconds of sound, five seconds of buzz. */
   function fire(title, body, opts = {}) {
-    banner(title, body);
-    chime(opts.falling !== true);
-    buzz(opts.pattern || [120, 60, 120]);
+    const ms = Number(opts.ms) > 0 ? Number(opts.ms) : ALERT_MS;
+    // Dismissing the banner stops the noise — it is the same interruption.
+    banner(title, body, stop);
+    ring(ms);
+    buzz(ms);
   }
 
-  window.KhelbroAlert = { fire, chime, unlock, get ready() { return unlocked; } };
+  window.KhelbroAlert = {
+    fire, ring, stop, unlock, ALERT_MS,
+    get ready() { return unlocked; },
+  };
 })();

@@ -246,14 +246,64 @@
     }, 1000);
   }
 
+  /* Moments already announced. The alert is raised from the fetched battle
+     rather than from the socket message that carried it, because a socket
+     event can simply not arrive — a dropped connection, a backgrounded tab, a
+     server that never emits it — and staying silent is the one failure this
+     feature cannot have. Both the socket and the poll funnel through load(),
+     so this is what stops the same moment ringing twice. */
+  const announced = new Set();
+
+  function announceChange(before, after) {
+    const alerts = window.KhelbroAlert;
+    if (!alerts || !after || !before) return;     // nothing to compare on first load
+
+    const gotOpponent = isCreator() && before.status === 'open' && after.status === 'requested';
+    const matchStarted = isAcceptor() && !before.roomCode && !!after.roomCode;
+
+    if (gotOpponent && !announced.has('opponent')) {
+      announced.add('opponent');
+      alerts.fire('Opponent found!',
+        `${(after.acceptor && after.acceptor.name) || 'A player'} wants to join your ${money(after.amount)} battle. Accept to start.`);
+    } else if (matchStarted && !announced.has('started')) {
+      announced.add('started');
+      alerts.fire('The host has started the match',
+        `Open Ludo King and join room ${after.roomCode}.`);
+    } else if (before.status !== after.status) {
+      toast('Battle updated: ' + after.status, 'info');
+    }
+  }
+
   async function load() {
     try {
       const data = await Api.battles.get(id);
+      const before = battle;
       battle = data.battle; claims = data.claims || [];
       render();
+      // After render, so the screen already shows what the alert is about.
+      announceChange(before, battle);
     } catch {
       $('#battle-missing').hidden = false;
     }
+  }
+
+  /* A refresh on a timer, so the alert does not depend on a socket frame
+     arriving. Only while the match has yet to start — once it is running or
+     settled there is nothing left to announce. */
+  let pollTimer = null;
+  function startPolling(everyMs = 8000) {
+    clearInterval(pollTimer);
+    pollTimer = setInterval(() => {
+      if (document.hidden) return;               // nothing to paint, save the call
+      if (!battle || ['completed', 'cancelled'].includes(battle.status)) {
+        clearInterval(pollTimer); pollTimer = null; return;
+      }
+      if (battle.status === 'running' && battle.roomCode) return;
+      load();
+    }, everyMs);
+    /* Coming back to the tab is the moment a missed change matters most, so
+       refresh straight away rather than waiting out the interval. */
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
   }
 
   K.ready.then(async () => {
@@ -272,42 +322,25 @@
     if (!battle) return;
 
     startTicking();
+    startPolling();
     K.watchBattle(id);
 
     if (window.KhelbroPush && (isCreator() || isAcceptor())) {
       setTimeout(() => KhelbroPush.offer('We\'ll tell you when your opponent joins or the room code is set.'), 2500);
     }
     // The other player's action lands here.
+    /* The other player's action lands here. It only triggers the refetch —
+       load() decides what is worth announcing, so the alert behaves the same
+       whether the news arrived by socket or by poll. */
     K.on('battle:updated', b => {
       if (!b || b.id !== id) return;
-      const wasStatus = battle && battle.status;
-      const hadCode = battle && battle.roomCode;
-      battle = b;
-      load();                                   // refetch claims too
-
-      /* The two moments worth interrupting someone for. Both arrive while the
-         player is almost certainly looking at the Ludo app rather than at
-         this screen, so they get a sound and a buzz, not a toast that fades
-         while nobody is watching. */
-      const alerts = window.KhelbroAlert;
-      const gotOpponent = isCreator() && wasStatus === 'open' && b.status === 'requested';
-      const matchStarted = isAcceptor() && !hadCode && !!b.roomCode;
-
-      if (gotOpponent && alerts) {
-        alerts.fire('Opponent found!',
-          `${(b.acceptor && b.acceptor.name) || 'A player'} wants to join your ${money(b.amount)} battle. Accept to start.`);
-      } else if (matchStarted && alerts) {
-        alerts.fire('The host has started the match',
-          `Open Ludo King and join room ${b.roomCode}.`);
-      } else if (!hadCode && b.roomCode) {
-        toast('Room code received: ' + b.roomCode, 'success');
-      } else if (wasStatus !== b.status) {
-        toast('Battle updated: ' + b.status, 'info');
-      }
-
-      K.refresh().then(K.paint);                // balances may have moved
+      load().then(() => K.refresh()).then(K.paint);   // balances may have moved
     });
-    window.addEventListener('beforeunload', () => { clearInterval(tickTimer); K.leaveBattle(id); });
+    window.addEventListener('beforeunload', () => {
+      clearInterval(tickTimer); clearInterval(pollTimer);
+      window.KhelbroAlert?.stop();
+      K.leaveBattle(id);
+    });
 
     // Accept / Reject request buttons for host
     if ($('#accept-request-btn')) {

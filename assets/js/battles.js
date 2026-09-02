@@ -285,33 +285,47 @@
     }, 4000);
   }
 
-  /* Sound the alert when one of my battles reaches a moment I care about:
-     an opponent turning up on a battle I host, or the host starting one I
-     joined. Anything else is left to the quiet re-render. */
-  /* Transitions already announced. `mine` is only refreshed on the next
-     refetch, so without this a second event carrying the same status — a
-     re-emit, a reconnect replay — would read as the same change happening
-     again and sound the alert twice. */
+  /* Transitions already announced, as `<id>:<status>`.
+
+     The alert is raised from the data, not from the socket message that
+     happened to carry it: a socket event can be missed — a dropped
+     connection, a backgrounded tab, a server that never emits it — and the
+     one thing this feature must not do is stay silent. So every refresh
+     compares what it just fetched against what was on screen, and this set
+     is what stops the same change being announced twice when both the socket
+     and the poll notice it. */
   const announced = new Set();
 
-  function announce(b) {
+  /** Raise the alert for anything that changed between two views of `mine`. */
+  function announceChanges(before, after) {
     const alerts = window.KhelbroAlert;
     const me = K.state.user;
-    if (!alerts || !me || !b || !b.id) return;
-    const once = `${b.id}:${b.status}`;
-    if (announced.has(once)) return;
-    announced.add(once);
-    const prev = mine.find(x => x.id === b.id);
-    const was = prev && prev.status;
-    const iHost = !!(b.creator && b.creator.id === me.id);
-    const iJoined = !!(b.acceptor && b.acceptor.id === me.id);
+    if (!alerts || !me || !after) return;
 
-    if (iHost && b.status === 'requested' && was !== 'requested') {
-      alerts.fire('Opponent found!',
-        `${(b.acceptor && b.acceptor.name) || 'A player'} wants to join your ${money(b.amount)} battle. Open it to accept.`);
-    } else if (iJoined && b.status === 'running' && was !== 'running') {
-      alerts.fire('The host has started the match',
-        `Your ${money(b.amount)} battle is live. Open it for the room code.`);
+    const wasById = new Map((before || []).map(b => [b.id, b.status]));
+    for (const b of after) {
+      if (!b || !b.id) continue;
+      const once = `${b.id}:${b.status}`;
+      if (announced.has(once)) continue;
+      announced.add(once);
+
+      /* Nothing to compare against means this battle appeared already in
+         that state — the first load of the page, or a reconnect. Announcing
+         it would fire an alert for something that happened before the player
+         even opened the tab. */
+      if (!wasById.has(b.id)) continue;
+      if (wasById.get(b.id) === b.status) continue;
+
+      const iHost = !!(b.creator && b.creator.id === me.id);
+      const iJoined = !!(b.acceptor && b.acceptor.id === me.id);
+
+      if (iHost && b.status === 'requested') {
+        alerts.fire('Opponent found!',
+          `${(b.acceptor && b.acceptor.name) || 'A player'} wants to join your ${money(b.amount)} battle. Open it to accept.`);
+      } else if (iJoined && b.status === 'running') {
+        alerts.fire('The host has started the match',
+          `Your ${money(b.amount)} battle is live. Open it for the room code.`);
+      }
     }
   }
 
@@ -347,10 +361,13 @@
         K.state.user ? Api.battles.mine().catch(() => ({ battles: [] })) : Promise.resolve({ battles: [] }),
       ]);
       open = o.battles; running = r.battles;
+      const before = mine;
       mine = (m.battles || [])
         .filter(b => ACTIVE.includes(b.status))
         .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       render();
+      // After render, so the row the alert points at is already on screen.
+      announceChanges(before, mine);
     } catch (e) {
       toast(e.message, 'error');
     }
@@ -364,6 +381,24 @@
   function reloadSoon() {
     clearTimeout(reloadTimer);
     reloadTimer = setTimeout(() => { reloadTimer = null; load(); }, 400);
+  }
+
+  /* A refresh on a timer as well as on socket events. The lobby is where a
+     host waits for an opponent, and a socket frame that never arrives — a
+     dropped connection, a sleeping phone, a server that does not emit it —
+     would mean no alert at all. Only while signed in and only while the tab
+     is visible: there is nobody to alert otherwise. */
+  let pollTimer = null;
+  function startPolling(everyMs = 10000) {
+    clearInterval(pollTimer);
+    pollTimer = setInterval(() => {
+      if (document.hidden || !K.state.user) return;
+      load();
+    }, everyMs);
+    // Returning to the tab is exactly when a missed change matters.
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && K.state.user) load();
+    });
   }
 
   const showError = msg => {
@@ -549,11 +584,16 @@
        here as in the battle room. `mine` still holds the previous state at
        this point, which is what makes "this just changed" detectable — after
        load() every battle would look like it had always been in that state. */
-    K.on('battle:updated', b => { announce(b); reloadSoon(); });
+    K.on('battle:updated', () => reloadSoon());
 
-    window.addEventListener('beforeunload', () => clearTimeout(reloadTimer));
+    window.addEventListener('beforeunload', () => {
+      clearTimeout(reloadTimer);
+      clearInterval(pollTimer);
+      window.KhelbroAlert?.stop();
+    });
 
     K.revealAfter('#open-skeleton', '#open-wrap');
     await load();
+    startPolling();
   });
 })();

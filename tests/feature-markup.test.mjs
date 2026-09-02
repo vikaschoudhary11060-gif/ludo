@@ -176,6 +176,8 @@ test('the cancel window on the bet details page', async t => {
 
 /* ---------------------------------------------------------------- */
 test('the match alerts', async t => {
+  const js = read('assets/js/alert.js');
+
   await t.test('load on both the lobby and the battle room', () => {
     for (const page of ['battles.html', 'battle.html']) {
       assert.match(read(page), /<script src="assets\/js\/alert\.js"/, `${page} does not load alert.js`);
@@ -194,24 +196,102 @@ test('the match alerts', async t => {
     }
   });
 
-  await t.test('make a sound and a buzz, not just a banner', () => {
-    const js = read('assets/js/alert.js');
-    assert.match(js, /createOscillator/, 'no tone is produced');
-    assert.match(js, /navigator\.vibrate/, 'no haptic feedback');
-    assert.match(js, /gain\.gain\.exponentialRampToValueAtTime\(0\.35/,
+  await t.test('ring for five seconds, not one chirp', () => {
+    assert.match(js, /const ALERT_MS = 5000;/, 'the alert duration is not five seconds');
+    // A loop over the duration, rather than a fixed pair of notes.
+    assert.match(js, /for \(let at = 0; at < seconds; at \+= PERIOD\)/,
+      'the tone is not repeated across the alert window');
+    assert.match(js, /ring\(ms\)/, 'fire() does not ring for the full duration');
+  });
+
+  await t.test('schedule on the audio clock, not on a repeating timer', () => {
+    /* A setInterval is throttled to once a second in a background tab and
+       may be stopped outright — exactly when a five-second alert matters. */
+    // The call, not the word: the comment above the scheduler names it too.
+    assert.doesNotMatch(js, /setInterval\(/, 'the ring is driven by a timer');
+    assert.match(js, /osc\.start\(from\)/, 'notes are not scheduled on the context clock');
+  });
+
+  await t.test('buzz for the same five seconds', () => {
+    assert.match(js, /for \(let at = 0; at < ms; at \+= 620\) pattern\.push/,
+      'the vibration is a single pulse rather than the full window');
+  });
+
+  await t.test('can be silenced, and dismissing the banner does it', () => {
+    assert.match(js, /function stop\(\)/, 'a ringing alert cannot be stopped');
+    assert.match(js, /banner\(title, body, stop\)/,
+      'closing the banner must stop the sound — it is the same interruption');
+    assert.match(js, /navigator\.vibrate\(0\)/, 'stopping does not cancel the vibration');
+  });
+
+  await t.test('a second alert replaces the first rather than layering', () => {
+    assert.match(js, /\/\/ A second alert replaces the first[\s\S]{0,40}stop\(\);/);
+  });
+
+  await t.test('keep re-unlocking audio, not just on the first gesture', () => {
+    /* The first gesture can land while the context is still suspended, and
+       iOS suspends it again whenever the page is backgrounded. */
+    assert.match(js, /'pointerdown', 'keydown', 'touchstart'/);
+    assert.doesNotMatch(js, /unlock, \{ once: true/, 'audio unlocks only once');
+    assert.match(js, /visibilitychange[\s\S]{0,120}unlock\(\)/,
+      'a context suspended by backgrounding is never resumed');
+  });
+
+  await t.test('play at a normal listening level', () => {
+    assert.match(js, /exponentialRampToValueAtTime\(0\.[34]/,
       'the alert should play at a normal listening level');
   });
 
-  await t.test('unlock audio on the first interaction, not at the alert', () => {
-    // Browsers refuse audio that did not follow a gesture; the gesture that
-    // matters happened minutes before the alert.
-    assert.match(read('assets/js/alert.js'), /pointerdown[\s\S]*?once: true/);
-  });
-
   await t.test('never render an opponent’s name as markup', () => {
-    const js = read('assets/js/alert.js');
     assert.match(js, /\.textContent = title/);
     assert.match(js, /\.textContent = body/);
+  });
+});
+
+/* ---------------------------------------------------------------- */
+test('the alert does not depend on a socket frame arriving', async t => {
+  const lobby = read('assets/js/battles.js');
+  const room = read('assets/js/battle.js');
+
+  await t.test('the lobby decides from the data it fetched', () => {
+    assert.match(lobby, /announceChanges\(before, mine\)/,
+      'the lobby only alerts on a socket payload');
+    assert.doesNotMatch(lobby, /battle:updated', b => \{ announce\(b\)/,
+      'the socket handler still owns the alert');
+  });
+
+  await t.test('the battle room decides from the data it fetched', () => {
+    assert.match(room, /announceChange\(before, battle\)/,
+      'the battle room only alerts on a socket payload');
+  });
+
+  await t.test('both refresh on a timer as well', () => {
+    for (const [name, js] of [['battles.js', lobby], ['battle.js', room]]) {
+      assert.match(js, /function startPolling/, `${name} has no polling fallback`);
+      assert.match(js, /startPolling\(\)/, `${name} never starts polling`);
+      assert.match(js, /document\.hidden/, `${name} polls a tab nobody is looking at`);
+    }
+  });
+
+  await t.test('and refresh immediately when the tab comes back', () => {
+    for (const [name, js] of [['battles.js', lobby], ['battle.js', room]]) {
+      assert.match(js, /visibilitychange[\s\S]{0,120}load\(\)/,
+        `${name} makes a returning player wait out the interval`);
+    }
+  });
+
+  await t.test('never announce the same moment twice', () => {
+    // Both the socket and the poll can notice the same change.
+    assert.match(lobby, /announced\.has\(once\)/);
+    assert.match(room, /announced\.has\('opponent'\)/);
+    assert.match(room, /announced\.has\('started'\)/);
+  });
+
+  await t.test('stay silent about what happened before the page opened', () => {
+    /* On the first load there is nothing to compare against; alerting there
+       would ring for a battle the player has already seen. */
+    assert.match(lobby, /if \(!wasById\.has\(b\.id\)\) continue;/);
+    assert.match(room, /if \(!alerts \|\| !after \|\| !before\) return;/);
   });
 });
 

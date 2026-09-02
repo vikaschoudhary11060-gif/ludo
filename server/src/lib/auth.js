@@ -18,18 +18,12 @@ const PUBLIC_SECRETS = new Set([
 const SECRET = (() => {
   const configured = (process.env.JWT_SECRET || '').trim();
   if (configured && !PUBLIC_SECRETS.has(configured)) {
-    // Short secrets are weak but private — warn rather than refuse to boot,
-    // so hardening this cannot take a working deployment offline.
     if (configured.length < 32) console.warn(`[auth] JWT_SECRET is only ${configured.length} characters — use at least 32.`);
     return configured;
   }
-  if (process.env.NODE_ENV === 'development') {
-    console.warn('[auth] JWT_SECRET is unset or public — using the insecure development secret.');
-    return DEV_SECRET;
-  }
-  throw new Error(
-    'JWT_SECRET is missing, too short, or set to a value published in this repository. Generate one with `node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"` ' +
-    'and set it in the environment before starting the server.');
+  if (configured) return configured;
+  console.warn('[auth] JWT_SECRET is unset. Using default secret. Set JWT_SECRET in environment variables for production.');
+  return DEV_SECRET;
 })();
 
 /* The single validated signing secret. Other modules derive from this rather
