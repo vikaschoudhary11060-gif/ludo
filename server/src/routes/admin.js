@@ -432,7 +432,9 @@ router.get('/settings', async (_req, res) => res.json({ settings: await getSetti
 router.patch('/settings', requireAdmin('owner'), async (req, res) => {
   const parsed = z.object({
     withdraw_open: z.boolean().optional(), deposit_open: z.boolean().optional(), maintenance: z.boolean().optional(),
-    notice: z.string().max(500).nullable().optional(), commission: z.number().min(0).max(0.3).optional(),
+    notice: z.string().max(500).nullable().optional(),
+    notices: z.array(z.string().trim().min(1).max(500)).optional(),
+    commission: z.number().min(0).max(0.3).optional(),
     battle_limit: z.number().int().min(1).max(10).optional(), referral_rate: z.number().min(0).max(0.2).optional(),
     // Commission tiers: stakes below the threshold take the higher rate.
     commission_threshold: z.number().int().min(0).max(1000000).optional(),

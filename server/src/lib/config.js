@@ -154,6 +154,7 @@ export const SETTINGS_DEFAULTS = {
   bank_account_name: '',
   bank_account_number: '',
   bank_ifsc: '',
+  notices: [],
 };
 
 export const COMMISSION = SETTINGS_DEFAULTS.commission;

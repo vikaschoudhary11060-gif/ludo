@@ -768,8 +768,27 @@
     return Number.isFinite(n) ? +(n * 100).toFixed(3) : fallback;
   };
 
+  let adminNotices = [];
+  function renderNoticeList() {
+    const cont = $('#notice-list-container');
+    if (!cont) return;
+    if (!adminNotices.length) {
+      cont.innerHTML = '<p class="text-meta text-muted italic">No active notices. Add one above.</p>';
+      return;
+    }
+    cont.innerHTML = adminNotices.map((n, idx) => `
+      <div class="flex items-center gap-2 rounded-tile border border-line bg-surface-page p-2.5">
+        <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand/10 text-[11px] font-bold text-brand">${idx + 1}</span>
+        <input class="field !h-8 flex-1 !bg-surface text-body-sm font-medium text-ink notice-item-val" data-idx="${idx}" value="${esc(n)}" maxlength="500">
+        <button class="sub-btn !text-live hover:!border-live shrink-0" type="button" data-del-notice="${idx}">Delete</button>
+      </div>`).join('');
+  }
+
   async function loadSettings() {
     const { settings } = await call('/admin/settings');
+    adminNotices = Array.isArray(settings.notices) && settings.notices.length
+      ? [...settings.notices]
+      : (settings.notice ? [settings.notice] : []);
 
     const group = (title, hint, body) => `
       <section class="rounded-card border border-line bg-surface p-4">
@@ -795,12 +814,12 @@
         ${hint ? `<span class="w-full text-meta text-muted">${hint}</span>` : ''}
       </label>`;
 
-    const rupees = (k, label, hint) =>
-      field(k, label, 'type="number" min="0" step="1" data-unit="rupees"', Number(settings[k]) || 0, hint);
-    const percent = (k, label, hint) =>
-      field(k, label, 'type="number" min="0" step="0.1" data-scale="100"', pctOf(settings[k], 0), hint);
-    const count = (k, label, hint) =>
-      field(k, label, 'type="number" min="1" step="1"', Number(settings[k]) || 1, hint);
+    const rupees = (k, label, hint, fallback = 0) =>
+      field(k, label, 'type="number" min="0" step="1" data-unit="rupees"', Number(settings[k]) || fallback, hint);
+    const percent = (k, label, hint, fallback = 0) =>
+      field(k, label, 'type="number" min="0" step="0.1" data-scale="100"', pctOf(settings[k], fallback), hint);
+    const count = (k, label, hint, fallback = 1) =>
+      field(k, label, 'type="number" min="1" step="1"', Number(settings[k]) || fallback, hint);
 
     $('#settings').innerHTML = `
       <div class="grid gap-4 lg:grid-cols-2">
@@ -808,61 +827,69 @@
           toggle('withdraw_open', 'Withdrawals enabled',
                  'Off: the withdraw page shows a closed notice and the API refuses requests.') +
           toggle('deposit_open', 'Deposits enabled',
-                 'Off: players cannot submit new UPI deposit requests.') +
+                 'Off: players cannot submit new deposit requests.') +
           toggle('maintenance', 'Maintenance mode'))}
 
         ${group('Game commission', 'Taken from the pot before the winner is paid. Small battles carry the higher rate.',
           percent('commission_under', 'Commission below the threshold (%)',
-                  'e.g. 3.5 means a ₹100 battle pays the winner ₹193.') +
+                  'e.g. 3.5 means a ₹100 battle pays the winner ₹193.', 3.5) +
           percent('commission_from', 'Commission at or above the threshold (%)',
-                  'e.g. 2.5 means a ₹500 battle pays the winner ₹975.') +
+                  'e.g. 2.5 means a ₹500 battle pays the winner ₹975.', 2.5) +
           rupees('commission_threshold', 'Threshold (₹)',
-                 'Battles below this amount take the higher rate.'))}
+                 'Battles below this amount take the higher rate.', 500))}
 
         ${group('Referral &amp; bonuses', 'Applied live — the next signup and the next settled battle already use these.',
           percent('referral_rate', 'Referral commission (%)',
-                  'Paid to the referrer from every battle their player settles.') +
+                  'Paid to the referrer from every battle their player settles.', 1) +
           rupees('signup_bonus', 'Signup bonus (₹)',
-                 'Credited to every new account’s cash balance. 0 switches it off.') +
+                 'Credited to every new account’s cash balance. 0 switches it off.', 0) +
           rupees('referral_bonus', 'Referral signup bonus (₹)',
-                 'Extra cash credited when the new account used a referral code.'))}
+                 'Extra cash credited when the new account used a referral code.', 0))}
 
         ${group('Play &amp; payments', '',
-          count('battle_limit', 'Max open battles per player') +
+          count('battle_limit', 'Max open battles per player', '', 2) +
           `<label class="block">
              <span class="mb-1.5 block text-body text-ink">Deposit UPI ID</span>
-             <input class="field !h-9 w-full font-mono" value="${esc(settings.upi_id || '')}" data-set="upi_id" placeholder="name@bank">
+             <input class="field !h-9 w-full font-mono" value="${esc(settings.upi_id || 'khelbro@upi')}" data-set="upi_id" placeholder="name@bank">
            </label>`)}
 
         ${group('Deposit Bank Account Details', 'Official company bank account details shown to players on the Add Cash page for Bank Transfer.',
           `<div class="space-y-3">
              <label class="block">
                <span class="mb-1 block text-meta font-bold text-ink">Bank Name</span>
-               <input class="field !h-9 w-full" value="${esc(settings.bank_name || '')}" data-set="bank_name" placeholder="e.g. HDFC Bank">
+               <input class="field !h-9 w-full" value="${esc(settings.bank_name || 'HDFC Bank')}" data-set="bank_name" placeholder="e.g. HDFC Bank">
              </label>
              <label class="block">
                <span class="mb-1 block text-meta font-bold text-ink">Account Holder Name</span>
-               <input class="field !h-9 w-full" value="${esc(settings.bank_account_name || '')}" data-set="bank_account_name" placeholder="e.g. Khelbro Gaming Pvt Ltd">
+               <input class="field !h-9 w-full" value="${esc(settings.bank_account_name || 'Khelbro Gaming Pvt Ltd')}" data-set="bank_account_name" placeholder="e.g. Khelbro Gaming Pvt Ltd">
              </label>
              <label class="block">
                <span class="mb-1 block text-meta font-bold text-ink">Account Number</span>
-               <input class="field !h-9 w-full font-mono" value="${esc(settings.bank_account_number || '')}" data-set="bank_account_number" placeholder="e.g. 50200012345678">
+               <input class="field !h-9 w-full font-mono" value="${esc(settings.bank_account_number || '50200012345678')}" data-set="bank_account_number" placeholder="e.g. 50200012345678">
              </label>
              <label class="block">
                <span class="mb-1 block text-meta font-bold text-ink">IFSC Code</span>
-               <input class="field !h-9 w-full font-mono uppercase" value="${esc(settings.bank_ifsc || '')}" data-set="bank_ifsc" placeholder="e.g. HDFC0001234">
+               <input class="field !h-9 w-full font-mono uppercase" value="${esc(settings.bank_ifsc || 'HDFC0001234')}" data-set="bank_ifsc" placeholder="e.g. HDFC0001234">
              </label>
            </div>`)}
       </div>
 
-      ${group('Player notice', 'Shown at the top of the battles page, above the amount box. Leave empty to hide it.',
-        `<textarea class="field !h-auto w-full py-2" rows="3" maxlength="500" data-set="notice"
-                   placeholder="e.g. Withdrawals are processed between 10am and 8pm.">${esc(settings.notice || '')}</textarea>
-         <p class="text-meta text-muted">Plain text only, up to 500 characters. Saving takes effect immediately.</p>`)}
+      <div class="mt-4">
+        ${group('Player Announcements &amp; Notices (Multiple)', 'Shown at the top of the battles page. When multiple notices are added, players see them rotating dynamically.',
+          `<div class="space-y-3">
+             <div class="flex gap-2">
+               <input class="field !h-10 flex-1" id="new-notice-input" placeholder="Enter an announcement / notice text..." maxlength="500">
+               <button class="btn btn-primary !min-h-[40px] !px-4 !text-meta shrink-0" type="button" id="add-notice-btn">+ Add Notice</button>
+             </div>
+             <div id="notice-list-container" class="space-y-2"></div>
+           </div>`)}
+      </div>
 
       <div class="mt-4">
         <button class="btn btn-primary !min-h-[38px] !px-6 !text-meta" type="button" id="save-settings">Save changes</button>
       </div>`;
+
+    renderNoticeList();
   }
 
   const TABS = { overview: loadOverview, players: loadPlayers, games: loadGames, disputes: loadDisputes,
@@ -1059,6 +1086,26 @@
       return;
     }
 
+    if (t.id === 'add-notice-btn') {
+      const inp = $('#new-notice-input');
+      const val = (inp?.value || '').trim();
+      if (!val) { toast('Enter notice text first', 'error'); return; }
+      adminNotices.push(val);
+      if (inp) inp.value = '';
+      renderNoticeList();
+      return;
+    }
+
+    const delNotice = t.closest('[data-del-notice]');
+    if (delNotice) {
+      const idx = Number(delNotice.dataset.delNotice);
+      if (Number.isInteger(idx) && idx >= 0 && idx < adminNotices.length) {
+        adminNotices.splice(idx, 1);
+        renderNoticeList();
+      }
+      return;
+    }
+
     if (t.id === 'save-settings') {
       const body = {};
       let bad = null;
@@ -1077,6 +1124,17 @@
         // point and the server rejects nothing but stores the noise forever.
         body[el.dataset.set] = scale === 1 ? raw : Number((raw / scale).toFixed(6));
       });
+
+      // Gather live notices from the list
+      const liveNotices = [];
+      $$('.notice-item-val').forEach(inp => {
+        const val = inp.value.trim();
+        if (val) liveNotices.push(val);
+      });
+      adminNotices = liveNotices;
+      body.notices = adminNotices;
+      body.notice = adminNotices[0] || '';
+
       if (bad) { toast(`Enter a valid number for ${bad.replace(/_/g, ' ')}`, 'error'); return; }
       try { await call('/admin/settings', { method: 'PATCH', body: JSON.stringify(body) }); toast('Settings saved', 'success'); }
       catch (err) { toast(err.message, 'error'); }

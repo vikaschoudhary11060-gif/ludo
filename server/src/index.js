@@ -71,7 +71,10 @@ app.get('/api/config', async (_req, res) => {
       from: commissionFor(s.commission_threshold, s),
     },
     withdrawOpen: !!s.withdraw_open, depositOpen: !!s.deposit_open,
-    maintenance: !!s.maintenance, notice: s.notice, upiId: s.upi_id, qrImage: s.qr_image,
+    maintenance: !!s.maintenance,
+    notice: (s.notices && s.notices[0]) || s.notice || null,
+    notices: Array.isArray(s.notices) && s.notices.length ? s.notices : (s.notice ? [s.notice] : []),
+    upiId: s.upi_id, qrImage: s.qr_image,
     bankDetails: {
       bankName: s.bank_name || '',
       accountName: s.bank_account_name || '',

@@ -247,15 +247,42 @@
     });
   }
 
-  /* The admin's announcement, from /api/config. Written as text so nothing
-     an operator types can inject markup, and hidden outright when unset —
-     an empty banner above the amount box is worse than no banner. */
-  function showNotice(text) {
+  /* The admin's announcement(s), from /api/config. Supports both single notice
+     and multiple rotating notices. */
+  let noticeTimer = null;
+  function showNotice(data) {
     const box = $('#site-notice'), body = $('#site-notice-text');
     if (!box || !body) return;
-    const msg = String(text ?? '').trim();
-    body.textContent = msg;
-    box.classList.toggle('hidden', !msg);
+    clearInterval(noticeTimer);
+
+    const list = Array.isArray(data)
+      ? data.map(s => String(s || '').trim()).filter(Boolean)
+      : (typeof data === 'string' && data.trim() ? [data.trim()] : []);
+
+    if (!list.length) {
+      body.textContent = '';
+      box.classList.add('hidden');
+      return;
+    }
+
+    box.classList.remove('hidden');
+
+    if (list.length === 1) {
+      body.textContent = list[0];
+      return;
+    }
+
+    // Rotate through multiple announcements every 4 seconds
+    let cur = 0;
+    body.textContent = list[0];
+    noticeTimer = setInterval(() => {
+      cur = (cur + 1) % list.length;
+      body.style.opacity = '0';
+      setTimeout(() => {
+        body.textContent = list[cur];
+        body.style.opacity = '1';
+      }, 200);
+    }, 4000);
   }
 
   /* Sound the alert when one of my battles reaches a moment I care about:
@@ -362,7 +389,7 @@
       const conf = await K.config();
       /* Painted first: the announcement must not depend on the commission
          table below it rendering successfully. */
-      showNotice(conf.notice);
+      showNotice(conf.notices && conf.notices.length ? conf.notices : conf.notice);
       /* `tiers`, not `t` — `t` is the translator in this scope. These always
          resolve, so the table shows both rates even against a server that
          does not publish them; one row labelled "All amounts" would state a
