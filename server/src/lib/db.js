@@ -9,7 +9,7 @@
    a transaction (the wallet paths do).
    ============================================================ */
 import { col, nextId, withTransaction, connect } from './mongo.js';
-import { SETTINGS_DEFAULTS } from './config.js';
+import { SETTINGS_DEFAULTS, COMMISSION_SCHEME } from './config.js';
 
 export { col, nextId, withTransaction, connect };
 export const now = () => Date.now();
@@ -25,6 +25,24 @@ export async function ensureSeed() {
     const missing = Object.fromEntries(
       Object.entries(SETTINGS_DEFAULTS).filter(([k]) => existing[k] === undefined));
     if (Object.keys(missing).length) await col('settings').updateOne({ id: 1 }, { $set: missing });
+
+    /* One-time: the commission tiers changed meaning. A rate stored when the
+       number was a share of the whole pot now charges half what its operator
+       intends, and nothing on screen says so — the rules would quote 5% while
+       2.5% of the pot came out. Align once to the published rates and record
+       the scheme, so this never touches a deliberate choice made afterwards. */
+    if (existing.commission_scheme !== COMMISSION_SCHEME) {
+      const before = [existing.commission_under, existing.commission_from];
+      await col('settings').updateOne({ id: 1 }, { $set: {
+        commission_threshold: SETTINGS_DEFAULTS.commission_threshold,
+        commission_under: SETTINGS_DEFAULTS.commission_under,
+        commission_from: SETTINGS_DEFAULTS.commission_from,
+        commission_scheme: COMMISSION_SCHEME,
+      } });
+      console.log(`[settings] commission tiers realigned ${JSON.stringify(before)} -> ` +
+        `[${SETTINGS_DEFAULTS.commission_under}, ${SETTINGS_DEFAULTS.commission_from}] ` +
+        '(now a share of one player\'s bet). This runs once.');
+    }
   }
 
   // Ensure active battles have creator_stake recorded so refunds go back to original wallets

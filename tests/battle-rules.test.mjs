@@ -255,6 +255,42 @@ test('prize at each tier', async t => {
     assert.equal(prizeFor(1000, {}), 1950);    // pot 2000, 5% of 1000 = 50
   });
 
+  await t.test('the two ways of stating the same commission agree', () => {
+    /* The rules quote a percentage of the player's own bet — 8% up to ₹500,
+       5% above. The same money described against the whole pot is 4% and
+       2.5%, because a pot is exactly two equal stakes. Both readings are
+       written down here: if either drifts, the house is taking a different
+       amount from the one somebody was promised. */
+    const cases = [
+      // stake, of-one-stake, of-the-whole-pot
+      [50,   0.08, 0.04],
+      [100,  0.08, 0.04],
+      [500,  0.08, 0.04],
+      [501,  0.05, 0.025],
+      [1000, 0.05, 0.025],
+      [5000, 0.05, 0.025],
+    ];
+    for (const [stake, ofStake, ofPot] of cases) {
+      const pot = stake * 2;
+      const taken = pot - prizeFor(stake, {});
+      assert.equal(taken, Math.round(stake * ofStake),
+        `₹${stake}: took ₹${taken}, not ${ofStake * 100}% of the one stake`);
+      assert.equal(taken, Math.round(pot * ofPot),
+        `₹${stake}: took ₹${taken}, not ${ofPot * 100}% of the ₹${pot} pot`);
+    }
+  });
+
+  await t.test('the quoted rate is always double the pot rate', () => {
+    // The identity that makes both statements true at once. It holds for any
+    // rate the admin sets, not just the two defaults.
+    for (const rate of [0.02, 0.05, 0.08, 0.1, 0.25]) {
+      const stake = 1000, pot = stake * 2;
+      const taken = pot - payoutFor(stake, rate);
+      assert.equal(taken / pot, rate / 2,
+        `${rate * 100}% of a stake should be ${rate * 50}% of the pot`);
+    }
+  });
+
   await t.test('the house take is exactly the quoted rate on one stake', () => {
     for (const amount of [50, 100, 499, 500, 501, 1000, 25000]) {
       const taken = amount * 2 - prizeFor(amount, {});

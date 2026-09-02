@@ -827,11 +827,13 @@
                  'Off: players cannot submit new deposit requests.') +
           toggle('maintenance', 'Maintenance mode'))}
 
-        ${group('Game commission', 'Charged on ONE player’s stake — not on the pot — and taken before the winner is paid.',
+        ${group('Game commission',
+          'A percentage of ONE player’s bet. What you type here is exactly what the rules screen ' +
+          'shows players and exactly what is taken from the pot — there is no conversion in between.',
           percent('commission_under', 'Commission up to the threshold (%)',
-                  'The threshold itself is included. e.g. 8 on a ₹500 v ₹500 battle takes ₹40 and pays the winner ₹960.', 8) +
+                  'Threshold included. 8 → a ₹500 v ₹500 battle: ₹40 taken, winner gets ₹960.', 8) +
           percent('commission_from', 'Commission above the threshold (%)',
-                  'e.g. 5 on a ₹1,000 v ₹1,000 battle takes ₹50 and pays the winner ₹1,950.', 5) +
+                  '5 → a ₹1,000 v ₹1,000 battle: ₹50 taken, winner gets ₹1,950.', 5) +
           rupees('commission_threshold', 'Threshold (₹)',
                  'Battles up to and including this amount take the higher rate.', 500))}
 

@@ -433,6 +433,10 @@
          The threshold sits on the higher tier ("50 से 500 तक"), so the first
          row is inclusive of it and the second starts above it. */
       const tiers = K.commissionTiers();
+      /* The stored rate IS the share of one player's bet — the same number
+         that is charged and the same number the rules quote. No conversion
+         here on purpose: any factor between what is taken and what is shown
+         is a way for the two to drift apart. */
       const pct = r => (r * 100).toFixed(1).replace(/\.0$/, '') + '%';
       const rows = $('#commission-rows');
       if (rows) {

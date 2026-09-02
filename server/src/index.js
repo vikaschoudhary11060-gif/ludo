@@ -187,6 +187,25 @@ await ensureSeed();
 await runBackfills();       // repairs old rows; safe to re-run
 startSettlementSweeper(app);
 startBotEngine(app);        // lobby activity; no money, no ledger rows
+/* Print the commission actually in force, in both the framings the rules use.
+
+   The stored number is a share of ONE stake ("8%"), which is always half the
+   share of the pot ("4%"). It used to mean the pot share, so an instance
+   carried over from before that change takes half of what its operator
+   thinks — and nothing on screen would say so. One line at boot makes the
+   effective rate checkable straight after a deploy. */
+async function logCommission() {
+  try {
+    const s = await getSettings();
+    const both = r => `${+(r * 100).toFixed(2)}% of a stake / ${+(r * 50).toFixed(2)}% of the pot`;
+    console.log(`[commission] up to ₹${s.commission_threshold}: ${both(commissionFor(0, s))}`);
+    console.log(`[commission] above ₹${s.commission_threshold}: ${both(commissionFor(s.commission_threshold + 1, s))}`);
+  } catch (e) {
+    console.error('[commission] could not read the rates:', e?.message);
+  }
+}
+await logCommission();
+
 server.listen(PORT, () => {
   console.log(`Khelbro API listening on http://localhost:${PORT}`);
   console.log(`CORS origins: ${ORIGINS.join(', ')} (and all *.vercel.app)`);

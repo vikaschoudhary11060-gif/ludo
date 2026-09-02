@@ -404,6 +404,34 @@ test('the rules screen', async t => {
     assert.match(js, /से ज्यादा`, pct\(tiers\.from\)/,
       'the table is not driven by the live rates');
   });
+
+  await t.test('quotes 8% and 5%, the rate on the player’s own bet', () => {
+    /* The static fallback shown before /api/config lands has to state the
+       same tiers the server will send, or the table changes under the reader. */
+    const table = page.slice(page.indexOf('Commission Rates'));
+    assert.match(table, /50 से 500 तक[\s\S]{0,200}8%/);
+    assert.match(table, /500 से ज्यादा[\s\S]{0,200}5%/);
+  });
+
+  await t.test('shows exactly the rate that is charged, with no conversion', () => {
+    /* The stored rate is the share of one player's bet: the number taken and
+       the number shown are the same number. Any factor between them is a way
+       for the rules and the ledger to disagree — the rules would promise 8%
+       while 16% (or 4%) came out of the pot. */
+    assert.match(read('assets/js/battles.js'), /const pct = r => \(r \* 100\)/,
+      'the rules table scales the stored rate before showing it');
+    assert.match(read('assets/js/battle.js'), /commissionFor\(battle\.amount\) \* 100/,
+      'the battle page scales the stored rate before showing it');
+  });
+
+  await t.test('says the rate is on your own bet, not on the pot', () => {
+    // 8% of a stake and 4% of the pot are the same money; saying which one
+    // the number refers to is what stops it reading as double.
+    assert.match(page, /कमीशन आपकी अपनी बेट राशि पर लगता है, दोनों की कुल राशि पर नहीं/);
+    // The built page writes the rupee sign as &#8377;, so match around it.
+    assert.match(page, /500 बनाम [^<]{0,20}500[\s\S]{0,160}8%[\s\S]{0,80}40 कमीशन/,
+      'the worked example should show the actual rupees taken');
+  });
 });
 
 /* ---------------------------------------------------------------- */
@@ -693,6 +721,13 @@ test('the admin settings panel', async t => {
     }
   });
 
+  await t.test('says the number typed is the number players see', () => {
+    assert.match(js, /A percentage of ONE player’s bet/);
+    assert.match(js, /there is no conversion in between/);
+    assert.match(js, /8 → a ₹500 v ₹500 battle: ₹40 taken, winner gets ₹960/);
+    assert.match(js, /5 → a ₹1,000 v ₹1,000 battle: ₹50 taken, winner gets ₹1,950/);
+  });
+
   await t.test('takes rates as percentages and stores them as fractions', () => {
     // An admin typing "5" into a fraction field would set a 500% commission.
     assert.match(js, /data-scale="100"/, 'percentage fields are not marked for conversion');
@@ -728,6 +763,19 @@ test('the sign-in page has all four steps', async t => {
 
   await t.test('forces the setup step after a first OTP sign-in', () => {
     assert.match(js, /goToSetPassword\(\)/);
+  });
+
+  await t.test('shows who referred you, with no way to remove them', () => {
+    /* Arriving through someone's link settles who referred you. The banner
+       states it; there is no Remove, and the manual code box is hidden once a
+       code is applied, so there is no second way round either. */
+    assert.ok(page.includes('id="ref-referrer-name"'), 'the referrer name is not shown');
+    assert.ok(page.includes('id="ref-badge-code"'), 'the referral code is not shown');
+    assert.ok(!page.includes('id="ref-remove-btn"'), 'the Remove button is still there');
+    assert.doesNotMatch(js, /ref-remove-btn/, 'login.js still wires a Remove button');
+    assert.doesNotMatch(js, /function removeReferral/, 'dead removal code was left behind');
+    assert.match(js, /manual-ref-container'\)\.classList\.add\('hidden'\)/,
+      'the manual code box must hide once a referral is applied');
   });
 
   await t.test('keeps an OTP route for a forgotten password', () => {

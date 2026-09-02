@@ -134,6 +134,10 @@ export function durationLabel(ms) {
 export const GRACE_LABEL = durationLabel(CLAIM_GRACE_MS);
 export const CANCEL_LABEL = durationLabel(CANCEL_WINDOW_MS);
 
+/* Bumped only when the stored commission numbers change meaning, which is
+   what makes a one-time realignment safe to run. */
+export const COMMISSION_SCHEME = 'per-stake-v1';
+
 /* ---------- settings fallbacks ----------
    getSettings() must never hand a route `undefined` for a number it is
    about to multiply — that silently produced NaN payouts and disabled
@@ -152,6 +156,11 @@ export const SETTINGS_DEFAULTS = {
   /* Flat joining credits, in whole rupees. 0 = switched off. */
   signup_bonus: 0,
   referral_bonus: 0,
+  /* Which meaning the commission tiers carry. They used to be a share of the
+     whole pot and are now a share of one player's bet — the number the rules
+     quote. ensureSeed() uses this marker to align a document written under
+     the old meaning exactly once. */
+  commission_scheme: COMMISSION_SCHEME,
   upi_id: 'khelbro@upi',
   qr_image: null,
   bank_name: '',

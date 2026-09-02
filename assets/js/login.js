@@ -136,15 +136,6 @@
     return false;
   }
 
-  function removeReferral() {
-    appliedReferral = null;
-    localStorage.removeItem('khelbro.referral');
-    $('#referral-banner').classList.add('hidden');
-    $('#manual-ref-container').classList.remove('hidden');
-    $('#manual-ref-input').value = '';
-    $('#manual-ref-msg').classList.add('hidden');
-  }
-
   K.ready.then(async () => {
     /* A finished account has nothing to do here — leave before touching the
        page, so the sign-in form never flashes on the way out. */
@@ -208,14 +199,10 @@
       });
     }
 
-    // Remove applied referral
-    const removeBtn = $('#ref-remove-btn');
-    if (removeBtn) {
-      removeBtn.addEventListener('click', () => {
-        removeReferral();
-        toast('Referral code removed', 'info');
-      });
-    }
+    /* No "Remove" here on purpose. Arriving through someone's referral link
+       settles who referred you; the banner states that and nothing more. The
+       manual "Have a referral code?" box is hidden once one is applied, so
+       there is no second way to change it either. */
 
     const input = $('#phone');
     input.addEventListener('input', () => {
