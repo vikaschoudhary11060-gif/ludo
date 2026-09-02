@@ -107,7 +107,10 @@
       }
       const btn = $('#wd-btn');
       btn.disabled = true; btn.textContent = 'Requesting…';
+      try {
         await Api.wallet.withdraw(payload);
+        /* Remembered only once the server has accepted them, so a rejected
+           set of details is never the one offered back next time. */
         if (method === 'upi') {
           localStorage.setItem('khelbro.saved_upi', payload.upiId);
         } else {

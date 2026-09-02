@@ -27,19 +27,46 @@
   let unlocked = false;
   let ringing = [];          // oscillators currently scheduled
   let stopTimer = null;
+  let keeper = null;         // silent source that stops the context idling
+  let ringSeq = 0;           // which alert is currently ringing
 
   /* Browsers only let audio start from a user gesture, and the gesture that
      matters here happened minutes ago — the tap that created or joined the
      battle. So the context is built and resumed on the first interaction of
-     the page and kept warm for when the alert actually fires. */
-  function unlock() {
+     the page and kept warm for when the alert actually fires.
+
+     `await ctx.resume()` and not a bare call: resume() is asynchronous, and
+     reading ctx.state on the very next line still says "suspended". That is
+     what made the alert ring once and then go silent — the first alert ran on
+     a live context, the context was suspended afterwards, and every later
+     ring gave up on the state check before resume() had finished. */
+  async function unlock() {
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return;
+      if (!AC) return false;
       ctx = ctx || new AC();
-      if (ctx.state === 'suspended') ctx.resume();
+      if (ctx.state === 'suspended') await ctx.resume();
       unlocked = ctx.state === 'running';
-    } catch { /* no audio on this device; the banner still shows */ }
+      if (unlocked) keepAlive();
+      return unlocked;
+    } catch { return false; }   // no audio on this device; the banner still shows
+  }
+
+  /* A silent, permanently running source. An otherwise idle context is free
+     to suspend itself between alerts, and getting it back needs a fresh user
+     gesture the player is not going to make — they are in the Ludo app. One
+     zero-gain oscillator is inaudible and keeps the context from idling. */
+  function keepAlive() {
+    if (keeper || !ctx) return;
+    try {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      osc.frequency.value = 1;
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      keeper = osc;            // deliberately never added to `ringing`
+    } catch {}
   }
 
   /* Not `once: true`: the first gesture can land while the tab is still
@@ -65,8 +92,8 @@
   }
 
   /** Ring for `ms`. Returns false when audio is unavailable. */
-  function ring(ms = ALERT_MS) {
-    if (!ctx || ctx.state !== 'running') unlock();
+  async function ring(ms = ALERT_MS) {
+    if (!ctx || ctx.state !== 'running') await unlock();
     if (!ctx || ctx.state !== 'running') return false;
 
     // A second alert replaces the first rather than layering on top of it.
@@ -155,10 +182,15 @@
   /** The whole alert: banner, five seconds of sound, five seconds of buzz. */
   function fire(title, body, opts = {}) {
     const ms = Number(opts.ms) > 0 ? Number(opts.ms) : ALERT_MS;
-    // Dismissing the banner stops the noise — it is the same interruption.
-    banner(title, body, stop);
+    const mine = ++ringSeq;
+
+    /* Dismissing the banner stops the noise — it is the same interruption.
+       But only this alert's noise: an earlier banner timing out ten seconds
+       later must not silence a newer alert that is still ringing. */
+    banner(title, body, () => { if (mine === ringSeq) stop(); });
     ring(ms);
     buzz(ms);
+    return mine;
   }
 
   window.KhelbroAlert = {

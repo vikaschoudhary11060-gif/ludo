@@ -145,6 +145,90 @@ router.get('/stats', async (req, res) => {
   });
 });
 
+/* ---------- inbox ----------
+   Everything waiting on a human, in one list.
+
+   The console already has a tab per queue, which means noticing new work
+   depends on an operator clicking through five of them. This gathers the
+   open items into one feed with a `tab` on each row so a click lands on the
+   screen that can act on it. Read-only: it decides nothing, it only shows
+   what is outstanding. */
+router.get('/inbox', async (_req, res) => {
+  const CAP = 25;
+
+  const nameFor = async rows => (await withUser(rows)).reduce((map, r) => {
+    map[r.id] = r.name || `Player #${r.user_id}`;
+    return map;
+  }, {});
+
+  const [deposits, withdrawals, disputes, kyc, chats] = await Promise.all([
+    col('deposit_requests').find({ status: 'pending' }, { projection: { _id: 0 } })
+      .sort({ created_at: 1 }).limit(CAP).toArray(),
+    col('withdrawal_requests').find({ status: 'pending' }, { projection: { _id: 0 } })
+      .sort({ created_at: 1 }).limit(CAP).toArray(),
+    // Bot battles never dispute, but the filter keeps every admin figure honest.
+    col('battles').find({ status: 'disputed', ...NOT_BOT },
+      { projection: { _id: 0, id: 1, amount: 1, created_at: 1, creator_id: 1, acceptor_id: 1 } })
+      .sort({ created_at: 1 }).limit(CAP).toArray(),
+    col('users').find({ kyc_status: 'pending' },
+      { projection: { _id: 0, id: 1, name: 1, phone: 1, created_at: 1 } })
+      .sort({ created_at: 1 }).limit(CAP).toArray(),
+    col('chat_threads').find({ unread_admin: { $gt: 0 } }, { projection: { _id: 0 } })
+      .sort({ last_at: -1 }).limit(CAP).toArray(),
+  ]);
+
+  const [depNames, wdNames, chatNames] = await Promise.all([
+    nameFor(deposits), nameFor(withdrawals), nameFor(chats),
+  ]);
+
+  /* One shape for every row, so the client renders a single list rather than
+     five special cases. `tab` is where a click should land; `filter` narrows
+     that tab to the queue this row came from. */
+  const items = [
+    ...deposits.map(d => ({
+      kind: 'deposit', id: String(d.id), tab: 'deposits', filter: 'pending',
+      title: `Deposit of ₹${d.amount}`,
+      detail: `${depNames[d.id]} · UTR ${d.utr}`, amount: d.amount, at: d.created_at,
+    })),
+    ...withdrawals.map(w => ({
+      kind: 'withdrawal', id: String(w.id), tab: 'withdrawals', filter: 'pending',
+      title: `Withdrawal of ₹${w.amount}`,
+      detail: `${wdNames[w.id]} · ${w.method === 'upi' ? w.upi_id : 'bank transfer'}`,
+      amount: w.amount, at: w.created_at,
+    })),
+    ...disputes.map(b => ({
+      kind: 'dispute', id: b.id, tab: 'disputes', filter: null,
+      title: `Disputed battle of ₹${b.amount}`,
+      detail: `Battle #${String(b.id).slice(-6)}`, amount: b.amount, at: b.created_at,
+    })),
+    ...kyc.map(u => ({
+      kind: 'kyc', id: String(u.id), tab: 'kyc', filter: null,
+      title: 'KYC awaiting review',
+      detail: `${u.name || 'Player'} · ${u.phone || ''}`.trim(), amount: null, at: u.created_at,
+    })),
+    ...chats.map(t => ({
+      kind: 'chat', id: String(t.id), tab: 'chat', filter: null,
+      title: `${t.unread_admin} unread message${t.unread_admin === 1 ? '' : 's'}`,
+      detail: `${chatNames[t.id]}${t.last_message ? ' · ' + String(t.last_message).slice(0, 60) : ''}`,
+      amount: null, at: t.last_at,
+    })),
+  ].sort((a, b) => (b.at || 0) - (a.at || 0));
+
+  /* Counts are the true totals, not the length of the capped lists — the
+     badge has to say 40 even when only 25 rows are shown. */
+  const [nDep, nWd, nDis, nKyc, nChat] = await Promise.all([
+    col('deposit_requests').countDocuments({ status: 'pending' }),
+    col('withdrawal_requests').countDocuments({ status: 'pending' }),
+    col('battles').countDocuments({ status: 'disputed', ...NOT_BOT }),
+    col('users').countDocuments({ kyc_status: 'pending' }),
+    col('chat_threads').countDocuments({ unread_admin: { $gt: 0 } }),
+  ]);
+  const counts = { deposits: nDep, withdrawals: nWd, disputes: nDis, kyc: nKyc, chat: nChat };
+  counts.total = nDep + nWd + nDis + nKyc + nChat;
+
+  res.json({ counts, items });
+});
+
 /* ---------- games ---------- */
 router.get('/battles', async (req, res) => {
   const from = since(req);

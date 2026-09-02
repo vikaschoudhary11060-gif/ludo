@@ -138,11 +138,12 @@
         ${card('Withdrawals pending', money(s.withdrawals.pendingValue), `${s.withdrawals.pending} request(s)`, 'text-gold-deep')}
       </div>`;
 
+    /* Only the games badge comes from /stats. The queue badges are the
+       inbox's, because /stats is scoped to the selected time range — a
+       deposit still pending from last week vanished from the badge the
+       moment somebody chose "1 day". */
     setCount('games', s.battles.total);
-    setCount('disputes', s.battles.disputed);
-    setCount('deposits', s.deposits.pending);
-    setCount('withdrawals', s.withdrawals.pending);
-    setCount('kyc', s.kycPending);
+    pollInbox().catch(() => {});
 
     renderChart();       // M1
   }
@@ -269,7 +270,6 @@
   async function loadDisputes() {
     $('#disputes').innerHTML = skeleton(2);
     const { disputes } = await call('/admin/disputes' + q());
-    setCount('disputes', disputes.length);
     if (!disputes.length) { $('#disputes').innerHTML = empty('No disputes in this range.'); return; }
 
     $('#disputes').innerHTML = disputes.map(d => `
@@ -346,14 +346,12 @@
     $('#deposits').innerHTML =
       `<h2 class="mb-2 text-title text-ink">UPI requests (need verification)</h2>${reqTable}
        <h2 class="mb-2 mt-6 text-title text-ink">Deposit credits on the ledger</h2>${instantList || empty('None in this range.')}`;
-    setCount('deposits', requests.filter(r => r.status === 'pending').length);
   }
 
   /* ---------------- withdrawals ---------------- */
   async function loadWithdrawals() {
     $('#withdrawals').innerHTML = skeleton(3);
     const { withdrawals } = await call('/admin/withdrawals' + q(wdStatus ? '&status=' + wdStatus : ''));
-    setCount('withdrawals', withdrawals.filter(w => w.status === 'pending').length);
     if (!withdrawals.length) { $('#withdrawals').innerHTML = empty('No withdrawals in this range.'); return; }
 
     $('#withdrawals').innerHTML = `
@@ -389,7 +387,6 @@
   async function loadKyc() {
     $('#kyc').innerHTML = skeleton(2);
     const { pending } = await call('/admin/kyc');
-    setCount('kyc', pending.length);
     if (!pending.length) { $('#kyc').innerHTML = empty('Nothing pending.'); return; }
     $('#kyc').innerHTML = pending.map(u => `
       <article class="mb-3 rounded-card border border-line bg-surface p-4">
@@ -892,7 +889,101 @@
     renderNoticeList();
   }
 
-  const TABS = { overview: loadOverview, players: loadPlayers, games: loadGames, disputes: loadDisputes,
+  /* ---------------- alerts inbox ----------------
+     One list of everything waiting on a human. The console has a tab per
+     queue, so noticing new work used to mean clicking through five of them —
+     and nothing at all told an operator that something had arrived while they
+     were looking elsewhere. This feed is that signal, and it rings. */
+
+  const KIND = {
+    deposit:    ['Deposit',    'bg-gold/25 text-gold-deep',  '₹'],
+    withdrawal: ['Withdrawal', 'bg-live/15 text-live',       '↑'],
+    dispute:    ['Dispute',    'bg-live/20 text-live',       '⚖'],
+    kyc:        ['KYC',        'bg-brand/15 text-brand',     '🪪'],
+    chat:       ['Chat',       'bg-cta/15 text-cta-deep',    '💬'],
+  };
+
+  /* Counts from the previous poll, so a rise can be told from a steady state.
+     Null until the first poll lands: an operator opening the console to a
+     backlog of forty should not be greeted by an alarm for work that was
+     already there. */
+  let lastCounts = null;
+
+  function inboxRow(it) {
+    const [label, tone, glyph] = KIND[it.kind] || ['Item', 'bg-surface-page text-muted-dark', '•'];
+    return `
+      <button class="flex w-full items-center gap-3 border-b border-line px-3 py-3 text-left transition hover:bg-surface-page"
+              type="button" data-inbox-tab="${esc(it.tab)}" data-inbox-filter="${esc(it.filter || '')}">
+        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full ${tone} text-[15px]">${glyph}</span>
+        <span class="min-w-0 flex-1">
+          <span class="block truncate text-body font-bold text-ink">${esc(it.title)}</span>
+          <span class="block truncate text-meta text-muted">${esc(it.detail)}</span>
+        </span>
+        <span class="shrink-0 text-right">
+          <span class="block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${tone}">${label}</span>
+          <span class="mt-0.5 block text-[11px] text-muted">${when(it.at)}</span>
+        </span>
+      </button>`;
+  }
+
+  function paintInbox(data) {
+    const c = data.counts || {};
+    const tile = (n, label, tab) => `
+      <button class="rounded-card border border-line bg-surface p-3 text-left transition hover:border-brand"
+              type="button" data-inbox-tab="${tab}" data-inbox-filter="${tab === 'deposits' || tab === 'withdrawals' ? 'pending' : ''}">
+        <p class="pill-label">${label}</p>
+        <p class="mt-1 text-h3 font-bold ${n > 0 ? 'text-live' : 'text-ink'}">${n || 0}</p>
+      </button>`;
+
+    $('#alerts').innerHTML = `
+      <div class="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+        ${tile(c.deposits, 'Deposits', 'deposits')}
+        ${tile(c.withdrawals, 'Withdrawals', 'withdrawals')}
+        ${tile(c.disputes, 'Disputes', 'disputes')}
+        ${tile(c.kyc, 'KYC', 'kyc')}
+        ${tile(c.chat, 'Chat', 'chat')}
+      </div>
+      ${data.items && data.items.length
+        ? `<div class="overflow-hidden rounded-card border border-line bg-surface">${data.items.map(inboxRow).join('')}</div>`
+        : empty('Nothing is waiting. Every queue is clear.')}`;
+  }
+
+  async function loadInbox() {
+    $('#alerts').innerHTML = skeleton(3);
+    paintInbox(await pollInbox({ paint: false }));
+  }
+
+  /** Fetch the inbox, update the badges, and ring when something new arrives.
+      Returns the payload so the tab renderer can draw it. */
+  async function pollInbox({ paint = true } = {}) {
+    const data = await call('/admin/inbox');
+    const c = data.counts || {};
+
+    setCount('alerts', c.total || 0);
+    setCount('deposits', c.deposits || 0);
+    setCount('withdrawals', c.withdrawals || 0);
+    setCount('disputes', c.disputes || 0);
+    setCount('kyc', c.kyc || 0);
+    setCount('chat', c.chat || 0);
+
+    /* Ring on a rise in any single queue, not on the total: one deposit
+       approved and one arriving in the same window leaves the total
+       unchanged, and that new deposit still needs somebody. */
+    if (lastCounts) {
+      const risen = ['deposits', 'withdrawals', 'disputes', 'kyc', 'chat']
+        .filter(k => (c[k] || 0) > (lastCounts[k] || 0));
+      if (risen.length && $('#alert-sound') && $('#alert-sound').checked) {
+        const words = risen.map(k => `${(c[k] || 0) - (lastCounts[k] || 0)} ${k}`).join(', ');
+        window.KhelbroAlert?.fire('New items need attention', words);
+      }
+    }
+    lastCounts = c;
+
+    if (paint && tab === 'alerts') paintInbox(data);
+    return data;
+  }
+
+  const TABS = { overview: loadOverview, alerts: loadInbox, players: loadPlayers, games: loadGames, disputes: loadDisputes,
                  deposits: loadDeposits, withdrawals: loadWithdrawals, kyc: loadKyc, risk: loadRisk,
                  chat: loadChat, audit: loadAudit, admins: loadAdmins, payments: loadPayments, settings: loadSettings };
 
@@ -904,16 +995,30 @@
     }
   }
 
-  /* Counts stay fresh on every tab, so badges are meaningful. */
+  /* Counts stay fresh on every tab, so badges are meaningful. The queue
+     badges come from the inbox rather than from /stats: /stats is scoped to
+     the selected time range, so a pending deposit from last week vanished
+     from the badge while still very much needing an answer. */
   async function refreshCounts() {
     try {
       const s = await call('/admin/stats' + q());
       setCount('games', s.battles.total);
-      setCount('disputes', s.battles.disputed);
-      setCount('deposits', s.deposits.pending);
-      setCount('withdrawals', s.withdrawals.pending);
-      setCount('kyc', s.kycPending);
     } catch {}
+    try { await pollInbox(); } catch {}
+  }
+
+  /* An independent heartbeat, not tied to the Auto checkbox: the whole point
+     of the inbox is to notice work that arrives while nobody is looking. */
+  let inboxTimer = null;
+  function watchInbox(everyMs = 30000) {
+    clearInterval(inboxTimer);
+    inboxTimer = setInterval(() => {
+      if (document.hidden || !TOKEN) return;
+      pollInbox().catch(() => {});
+    }, everyMs);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && TOKEN) pollInbox().catch(() => {});
+    });
   }
 
   /* One setter per filter, so the chip row and the dropdown can never drift apart. */
@@ -929,18 +1034,21 @@
     const m = $('#m-gstatus'); if (m && m.value !== v) m.value = v;
   }
   const setGameStatus = v => { syncGameStatus(v); loadGames(); };
-  function setDepStatus(v) {
+  /* The sync half is separate from the load half, so an inbox row can narrow
+     the filter and let the tab switch do the single fetch. */
+  function syncDepStatus(v) {
     depStatus = v;
     $$('[data-dstatus]').forEach(b => b.classList.toggle('is-active', b.dataset.dstatus === v));
     const m = $('#m-dstatus'); if (m && m.value !== v) m.value = v;
-    loadDeposits();
   }
-  function setWdStatus(v) {
+  const setDepStatus = v => { syncDepStatus(v); loadDeposits(); };
+
+  function syncWdStatus(v) {
     wdStatus = v;
     $$('[data-wstatus]').forEach(b => b.classList.toggle('is-active', b.dataset.wstatus === v));
     const m = $('#m-wstatus'); if (m && m.value !== v) m.value = v;
-    loadWithdrawals();
   }
+  const setWdStatus = v => { syncWdStatus(v); loadWithdrawals(); };
 
   function switchTab(name) {
     tab = name;
@@ -954,6 +1062,11 @@
     sessionStorage.removeItem('khelbro.adminToken');
     TOKEN = ''; ME = null;
     clearInterval(autoTimer);
+    clearInterval(inboxTimer);
+    window.KhelbroAlert?.stop();
+    /* Forget the baseline: signing back in must not ring for the backlog
+       that was already there when the last session ended. */
+    lastCounts = null;
     if (socket) { socket.disconnect(); socket = null; }
     $('#app').hidden = true;
     $('#gate').hidden = false;
@@ -1019,6 +1132,20 @@
 
   document.addEventListener('click', async e => {
     const t = e.target;
+
+    /* An inbox row is also a [data-tab] chip's job, but it carries a filter —
+       check it first, or the plain tab handler below would swallow it and
+       drop the "pending" narrowing. */
+    const inbox = t.closest('[data-inbox-tab]');
+    if (inbox) {
+      const to = inbox.dataset.inboxTab;
+      const filter = inbox.dataset.inboxFilter || '';
+      if (to === 'deposits') syncDepStatus(filter);
+      if (to === 'withdrawals') syncWdStatus(filter);
+      return switchTab(to);
+    }
+
+    if (t.id === 'alerts-refresh') { loadInbox().catch(err => toast(err.message, 'error')); return; }
 
     const tabBtn = t.closest('[data-tab]');
     if (tabBtn) return switchTab(tabBtn.dataset.tab);
@@ -1343,6 +1470,7 @@
     set('#m-range', range); set('#m-gstatus', gameStatus);
     set('#m-dstatus', depStatus); set('#m-wstatus', wdStatus);
     refreshCounts();
+    watchInbox();
     switchTab('overview');
   }
 

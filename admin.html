@@ -94,6 +94,7 @@ document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
       <label class="sr-only" for="m-tab">Section</label>
       <select class="field !h-10 mt-2.5 w-full sm:hidden" id="m-tab" autocomplete="off">
         <option value="overview">Overview</option>
+        <option value="alerts">Alerts</option>
         <option value="players">Players</option>
         <option value="games">Games</option>
         <option value="disputes">Disputes</option>
@@ -111,6 +112,7 @@ document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
       <!-- Desktop: sections as chips -->
       <div class="mt-3 hidden gap-2 overflow-x-auto sm:flex">
         <button class="chip is-active" type="button" data-tab="overview">Overview</button>
+        <button class="chip" type="button" data-tab="alerts">Alerts <span class="tab-count" data-count="alerts"></span></button>
         <button class="chip" type="button" data-tab="players">Players</button>
         <button class="chip" type="button" data-tab="games">Games <span class="tab-count" data-count="games"></span></button>
         <button class="chip" type="button" data-tab="disputes">Disputes <span class="tab-count" data-count="disputes"></span></button>
@@ -129,6 +131,23 @@ document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
 
   <main class="mx-auto max-w-6xl p-4">
     <section id="tab-overview"></section>
+
+    <section id="tab-alerts" hidden>
+      <div class="mb-3 flex flex-wrap items-center gap-2">
+        <div>
+          <h2 class="text-title text-ink">Needs attention</h2>
+          <p class="mt-0.5 text-meta text-muted">
+            Every queue in one list, newest first. Click a row to open the screen that can action it.
+          </p>
+        </div>
+        <label class="ml-auto flex items-center gap-1.5 text-meta text-muted">
+          <input type="checkbox" class="h-4 w-4 accent-brand" id="alert-sound" checked>
+          Sound on new items
+        </label>
+        <button class="sub-btn" type="button" id="alerts-refresh">Refresh</button>
+      </div>
+      <div id="alerts"></div>
+    </section>
 
     <section id="tab-games" hidden>
       <div class="mb-3 flex flex-wrap items-center gap-2">
@@ -332,6 +351,7 @@ document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
 </style>
 
 <script>document.write('<scr'+'ipt src="'+window.KHELBRO_API+'/socket.io/socket.io.js" async data-socket-io><\/scr'+'ipt>');</script>
+<script src="assets/js/alert.js" defer></script>
 <script src="assets/js/admin.js" defer></script>
 </body>
 </html>

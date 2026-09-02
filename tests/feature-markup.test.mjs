@@ -219,13 +219,42 @@ test('the match alerts', async t => {
 
   await t.test('can be silenced, and dismissing the banner does it', () => {
     assert.match(js, /function stop\(\)/, 'a ringing alert cannot be stopped');
-    assert.match(js, /banner\(title, body, stop\)/,
+    assert.match(js, /banner\(title, body, \(\) => \{ if \(mine === ringSeq\) stop\(\); \}\)/,
       'closing the banner must stop the sound — it is the same interruption');
     assert.match(js, /navigator\.vibrate\(0\)/, 'stopping does not cancel the vibration');
   });
 
   await t.test('a second alert replaces the first rather than layering', () => {
     assert.match(js, /\/\/ A second alert replaces the first[\s\S]{0,40}stop\(\);/);
+  });
+
+  await t.test('ring again after the context has been suspended', () => {
+    /* The reported failure: it sounded once and never again. An idle
+       AudioContext gets suspended between alerts, and resume() is
+       asynchronous — reading ctx.state on the line after a bare resume() call
+       still says "suspended", so every later ring gave up before the context
+       had come back. Measured in a browser: state is still 'suspended'
+       immediately after an un-awaited resume(). */
+    assert.match(js, /await ctx\.resume\(\)/,
+      'resume() is not awaited — every alert after the first goes silent');
+    assert.match(js, /if \(!ctx \|\| ctx\.state !== 'running'\) await unlock\(\)/,
+      'ring() does not wait for the context to come back');
+  });
+
+  await t.test('keep the context from idling in the first place', () => {
+    assert.match(js, /function keepAlive/, 'nothing stops the context suspending itself');
+    assert.match(js, /gain\.gain\.value = 0;/, 'the keep-alive source must be silent');
+    assert.match(js, /keeper = osc;\s*\/\/ deliberately never added to `ringing`/,
+      'the keep-alive must not be killed by stop()');
+  });
+
+  await t.test('an older banner closing does not silence a newer alert', () => {
+    /* The banner lives ten seconds and the ring five, so an alert raised
+       eight seconds after another used to be cut off when the first banner
+       timed out and called stop(). */
+    assert.match(js, /const mine = \+\+ringSeq;/);
+    assert.match(js, /if \(mine === ringSeq\) stop\(\)/,
+      'any banner closing stops any ring, including a newer one');
   });
 
   await t.test('keep re-unlocking audio, not just on the first gesture', () => {
@@ -292,6 +321,78 @@ test('the alert does not depend on a socket frame arriving', async t => {
        would ring for a battle the player has already seen. */
     assert.match(lobby, /if \(!wasById\.has\(b\.id\)\) continue;/);
     assert.match(room, /if \(!alerts \|\| !after \|\| !before\) return;/);
+  });
+});
+
+/* ---------------------------------------------------------------- */
+test('the admin alerts inbox', async t => {
+  const page = read('admin.html');
+  const js = read('assets/js/admin.js');
+
+  await t.test('has a tab, on desktop and on mobile', () => {
+    assert.ok(page.includes('data-tab="alerts"'), 'no Alerts chip');
+    assert.ok(page.includes('<option value="alerts">'), 'the mobile section list omits it');
+    assert.ok(page.includes('id="tab-alerts"') && page.includes('id="alerts"'));
+  });
+
+  await t.test('every row carries where to go and how to filter', () => {
+    assert.match(js, /data-inbox-tab=/, 'rows do not say which tab they belong to');
+    assert.match(js, /data-inbox-filter=/, 'rows cannot narrow the tab they open');
+    assert.match(js, /if \(to === 'deposits'\) syncDepStatus\(filter\)/,
+      'a deposit row must land on the pending queue, not on "all"');
+  });
+
+  await t.test('the inbox row is handled before the plain tab chip', () => {
+    /* Both match [data-tab]-style handling; if the generic chip handler ran
+       first it would swallow the row and drop the pending filter. */
+    assert.ok(js.indexOf("t.closest('[data-inbox-tab]')") < js.indexOf("t.closest('[data-tab]')"));
+  });
+
+  await t.test('rings only when a queue actually grows', () => {
+    assert.match(js, /\.filter\(k => \(c\[k\] \|\| 0\) > \(lastCounts\[k\] \|\| 0\)\)/,
+      'the ring is not driven by a rise in the queues');
+    assert.match(js, /if \(lastCounts\) \{/,
+      'the first poll must not ring for a backlog that was already there');
+  });
+
+  await t.test('rings per queue, not on the total', () => {
+    /* One deposit approved and one arriving in the same window leaves the
+       total unchanged, and the new one still needs somebody. */
+    assert.match(js, /'deposits', 'withdrawals', 'disputes', 'kyc', 'chat'/);
+  });
+
+  await t.test('an operator can turn the sound off', () => {
+    assert.ok(page.includes('id="alert-sound"'));
+    assert.match(js, /\$\('#alert-sound'\)\.checked/);
+  });
+
+  await t.test('polls on its own, not only when Auto is ticked', () => {
+    assert.match(js, /function watchInbox/, 'the inbox has no heartbeat');
+    assert.match(js, /watchInbox\(\);/, 'the heartbeat is never started');
+    assert.match(js, /if \(document\.hidden \|\| !TOKEN\) return;/,
+      'it polls a hidden tab, or one with no session');
+  });
+
+  await t.test('forgets its baseline on sign-out', () => {
+    // Otherwise signing back in rings for the backlog that was already there.
+    assert.match(js, /lastCounts = null;/);
+    assert.match(js, /clearInterval\(inboxTimer\)/, 'the heartbeat outlives the session');
+  });
+
+  await t.test('the queue badges come from the inbox, not the ranged stats', () => {
+    /* /admin/stats is scoped to the selected range, so a deposit still
+       pending from last week vanished from the badge on "1 day". */
+    assert.match(js, /setCount\('deposits', c\.deposits \|\| 0\)/);
+    assert.doesNotMatch(js, /setCount\('deposits', s\.deposits\.pending\)/,
+      'the ranged stat still writes the deposits badge');
+    assert.doesNotMatch(js, /setCount\('kyc', s\.kycPending\)/,
+      'the ranged stat still writes the KYC badge');
+  });
+
+  await t.test('loads the alert script so it can actually ring', () => {
+    assert.match(page, /<script src="assets\/js\/alert\.js"/, 'admin.html cannot make a sound');
+    assert.ok(page.indexOf('assets/js/alert.js') < page.indexOf('assets/js/admin.js'),
+      'alert.js must load before admin.js uses it');
   });
 });
 
