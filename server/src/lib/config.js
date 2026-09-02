@@ -112,7 +112,11 @@ export const cancelReasonLabel = id =>
 /* A single unanswered result claim parks the battle in dispute. If the
    opponent has still not reported when this elapses, the lone claim is
    taken at face value and the battle settles automatically. */
-export const CLAIM_GRACE_MS = 10 * 60 * 1000;       // 10 minutes
+/* Fifteen minutes, because that is the window the published rules promise:
+   "Game समाप्त होने के 15 मिनट के अंदर रिजल्ट डालना आवश्यक है". The rules
+   screen renders this value rather than restating it, so the two cannot
+   drift — change it here and the copy follows. */
+export const CLAIM_GRACE_MS = 15 * 60 * 1000;      // 15 minutes
 
 /* Human-readable forms of the two windows, so player-facing copy can never
    state a duration the code no longer enforces. Rounding would reintroduce
@@ -141,8 +145,8 @@ export const SETTINGS_DEFAULTS = {
   notice: null,
   commission: 0.05,               // legacy flat rate, superseded by the tiers
   commission_threshold: 500,      // stakes below this take the higher rate
-  commission_under: 0.035,        // 3.5% below the threshold
-  commission_from: 0.025,         // 2.5% at or above it
+  commission_under: 0.08,         // 8% of one stake, up to and including the threshold
+  commission_from: 0.05,          // 5% of one stake, above it
   battle_limit: 2,
   referral_rate: 0.01,
   /* Flat joining credits, in whole rupees. 0 = switched off. */
@@ -161,12 +165,21 @@ export const COMMISSION = SETTINGS_DEFAULTS.commission;
 export const REFERRAL_RATE = SETTINGS_DEFAULTS.referral_rate;
 
 /* ---------- commission tiers ----------
-   Small battles carry a higher rate than large ones: below the threshold
-   3.5%, at or above it 2.5%. A battle of exactly the threshold amount takes
-   the lower rate — "below ₹500" is the higher tier, ₹500 itself is not. */
+
+   The rate is charged on ONE player's stake, not on the pot. That is the
+   number a player is quoted — "you bet ₹500, we take 8%" — so it is the
+   number the rules screen shows and the number stored here. A ₹500 v ₹500
+   battle therefore pays 8% of ₹500 = ₹40, and the winner takes ₹960 of the
+   ₹1,000 pot. Reading it as a share of the pot would halve the house take.
+
+   Small battles carry the higher rate: 8% up to ₹500, 5% above it. The
+   threshold itself is on the *higher* side — the published rule is
+   "₹50 से ₹500 तक: 8%, ₹500 से ज्यादा: 5%", so a ₹500 battle pays 8% and it
+   takes ₹501 to reach the lower rate. The comparison below is `<=` for
+   exactly that reason; flipping it to `<` moves ₹500 into the wrong tier. */
 export const COMMISSION_THRESHOLD = 500;
-export const COMMISSION_UNDER = 0.035;   // stake < threshold
-export const COMMISSION_FROM  = 0.025;   // stake >= threshold
+export const COMMISSION_UNDER = 0.08;    // stake <= threshold
+export const COMMISSION_FROM  = 0.05;    // stake >  threshold
 
 const rate = (v, fallback) =>
   (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v < 1 ? v : fallback);
@@ -176,14 +189,19 @@ export function commissionFor(amount, settings = {}) {
   const threshold = (typeof settings.commission_threshold === 'number'
     && Number.isFinite(settings.commission_threshold) && settings.commission_threshold >= 0)
     ? settings.commission_threshold : COMMISSION_THRESHOLD;
-  return Number(amount) < threshold
+  return Number(amount) <= threshold
     ? rate(settings.commission_under, COMMISSION_UNDER)
     : rate(settings.commission_from, COMMISSION_FROM);
 }
 
-/** Winner's take: both stakes less the commission that applies to this stake. */
+/** Winner's take: the whole pot, less commission charged on ONE stake.
+
+    `amount * 2 - amount * rate`, not `amount * 2 * (1 - rate)`. The second
+    form charges the rate against both stakes and would take twice the
+    commission the player was quoted — on a ₹500 v ₹500 battle at 8% that is
+    ₹80 out of the pot instead of ₹40. */
 export const payoutFor = (amount, commission = COMMISSION_FROM) =>
-  Math.round(amount * 2 * (1 - commission));
+  Math.round(amount * (2 - commission));
 
 /** Convenience for callers that hold settings rather than a resolved rate. */
 export const prizeFor = (amount, settings = {}) =>

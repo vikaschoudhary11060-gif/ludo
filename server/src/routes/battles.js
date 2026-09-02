@@ -7,7 +7,7 @@ import express from 'express';
 import { SafeRouter } from '../lib/safe-router.js';
 import crypto from 'node:crypto';
 import { z } from 'zod';
-import { col, now, credit, debit, spendable, notify, getSettings, withTransaction } from '../lib/db.js';
+import { col, now, credit, debit, spendable, notify, getSettings, getWallet, withTransaction } from '../lib/db.js';
 import { requireAuth, optionalAuth } from '../lib/auth.js';
 import { MODES, CLAIM_GRACE_MS, GRACE_LABEL, CANCEL_LABEL, cancelWindowOpen, prizeFor,
          CANCEL_REASON_IDS, cancelReasonLabel, cancelPlan } from '../lib/config.js';
@@ -57,6 +57,70 @@ router.get('/', optionalAuth, async (req, res) => {
 router.get('/mine', requireAuth, async (req, res) => {
   const rows = await fetchBattles({ $or: [{ creator_id: req.user.id }, { acceptor_id: req.user.id }] }, 200);
   res.json({ battles: rows.map(b => shape(b, req.user.id)) });
+});
+
+/* GET /api/battles/history
+
+   The player's own games with the wallet balance before and after each one.
+
+   The balances are reconstructed backwards from the wallet as it stands now
+   rather than forwards from zero: walking forwards needs every transaction
+   the account has ever had to be correct, while walking backwards is exact
+   for the recent rows and simply runs out for the oldest — which is the right
+   direction to be wrong in, since those are the rows nobody scrolls to.
+
+   Must stay above `/:id`, or Express matches "history" as a battle id. */
+router.get('/history', requireAuth, async (req, res) => {
+  const uid = req.user.id;
+  const TX_WINDOW = 2000;
+
+  const [rows, wallet] = await Promise.all([
+    fetchBattles({ $or: [{ creator_id: uid }, { acceptor_id: uid }] }, 200),
+    getWallet(uid),
+  ]);
+
+  /* Only the two spendable buckets: `referral` is not part of the balance the
+     player sees. `failed` rows are excluded because a rejected withdrawal is
+     reversed by re-crediting the wallet and marking its debit failed — no
+     second row is written, so counting it would double the reversal. This is
+     the same rule /admin/reconcile uses. */
+  const txs = await col('transactions').find(
+    { user_id: uid, bucket: { $in: ['deposit', 'winnings'] }, status: { $ne: 'failed' } },
+    { projection: { _id: 0, id: 1, type: 1, amount: 1, ref_id: 1, created_at: 1 } },
+  ).sort({ created_at: -1, id: -1 }).limit(TX_WINDOW).toArray();
+
+  const balances = new Map();          // battle id -> { opening, closing }
+  let running = wallet.deposit + wallet.winnings;
+  for (const tx of txs) {
+    const after = running;
+    const before = tx.type === 'credit' ? after - tx.amount : after + tx.amount;
+    if (tx.ref_id != null) {
+      const seen = balances.get(tx.ref_id);
+      /* Walking newest to oldest, the first row seen for a battle is its last
+         movement and the last row seen is its first — so `closing` is set
+         once and `opening` keeps moving back. */
+      if (!seen) balances.set(tx.ref_id, { opening: before, closing: after });
+      else seen.opening = before;
+    }
+    running = before;
+  }
+
+  /* If the window filled up, anything at or before its oldest row may have
+     had earlier movements we never read — reporting a balance for those would
+     be a guess. Say nothing rather than something wrong. */
+  const truncatedAt = txs.length === TX_WINDOW ? txs[txs.length - 1].created_at : null;
+
+  res.json({
+    battles: rows.map(b => {
+      const bal = balances.get(b.id);
+      const trustworthy = bal && (truncatedAt == null || b.created_at > truncatedAt);
+      return {
+        ...shape(b, uid),
+        openingBalance: trustworthy ? bal.opening : null,
+        closingBalance: trustworthy ? bal.closing : null,
+      };
+    }),
+  });
 });
 
 /* GET /api/battles/:id */

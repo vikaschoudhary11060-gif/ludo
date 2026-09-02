@@ -71,7 +71,7 @@
 | **One result per player** — second submission rejected | ✅ |
 | **Two-sided settlement** — both must agree before money moves | ✅ |
 | Conflicting claims → `disputed`, funds held, no auto-payout | ✅ |
-| Payout = stake × 2 − 5% commission (server-configured) | ✅ |
+| Payout = pot − (rate × one stake); 8% up to ₹500, 5% above (server-configured) | ✅ |
 | Referrer earns 2% of each settled stake | ✅ |
 | Game history with status filters and pagination | ✅ |
 | **Playable Ludo board** | ❌ by your decision — rules engine + 28 tests exist unused |

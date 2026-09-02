@@ -428,21 +428,32 @@
       /* `tiers`, not `t` — `t` is the translator in this scope. These always
          resolve, so the table shows both rates even against a server that
          does not publish them; one row labelled "All amounts" would state a
-         rate that is wrong for half of every stake. */
+         rate that is wrong for half of every stake.
+
+         The threshold sits on the higher tier ("50 से 500 तक"), so the first
+         row is inclusive of it and the second starts above it. */
       const tiers = K.commissionTiers();
       const pct = r => (r * 100).toFixed(1).replace(/\.0$/, '') + '%';
       const rows = $('#commission-rows');
       if (rows) {
         rows.innerHTML = [
-          [`${t('Below')} ${money(tiers.threshold)}`, pct(tiers.under)],
-          [`${money(tiers.threshold)} ${t('and above')}`, pct(tiers.from)],
+          [`${money(cfg.min)} से ${money(tiers.threshold)} तक`, pct(tiers.under)],
+          [`${money(tiers.threshold)} से ज्यादा`, pct(tiers.from)],
         ].map(([label, rate]) =>
           `<tr><td class="border border-line px-2 py-1.5">${label}</td>` +
           `<td class="border border-line px-2 py-1.5">${rate}</td></tr>`).join('');
       }
-      // Example uses a stake on the lower-rate side, matching the label above.
+      // The worked example uses the threshold itself, the row above it.
       const eg = $('#commission-example');
-      if (eg) eg.textContent = money(K.prizeFor(500));
+      if (eg) eg.textContent = money(K.prizeFor(tiers.threshold));
+
+      /* The reporting window is enforced by the server, so the rule renders
+         the server's number rather than restating it — the copy can never
+         promise a window the sweeper does not honour. */
+      const grace = $('#rule-grace');
+      if (grace && Number.isFinite(conf.claimGraceMs)) {
+        grace.textContent = `${Math.round(conf.claimGraceMs / 60000)} मिनट`;
+      }
     } catch {}
 
     $('#mode-title').textContent = cfg.name;

@@ -99,13 +99,15 @@ test('cancel window', async t => {
   });
 });
 
-/* ---------------- lone claim after the 10-minute grace ---------------- */
+/* ---------------- lone claim after the 15-minute grace ---------------- */
 
 test('lone-claim settlement', async t => {
   const HOST = 11, GUEST = 22;
 
-  await t.test('grace period is ten minutes', () => {
-    assert.equal(CLAIM_GRACE_MS, 10 * 60 * 1000);
+  await t.test('grace period is fifteen minutes, as the rules promise', () => {
+    // The rules screen renders this value; a mismatch would publish a window
+    // the sweeper does not actually honour.
+    assert.equal(CLAIM_GRACE_MS, 15 * 60 * 1000);
   });
 
   await t.test('a lone "won" from the host awards the host', () => {
@@ -151,15 +153,17 @@ test('lone-claim settlement', async t => {
 /* ---------------- payout ---------------- */
 
 test('payout', async t => {
-  await t.test('takes the commission off the doubled stake', () => {
-    assert.equal(payoutFor(500, 0.05), 950);
-    assert.equal(payoutFor(1000, 0.05), 1900);
-    assert.equal(payoutFor(50, 0.05), 95);
+  await t.test('takes the commission off one stake, then pays the rest of the pot', () => {
+    // pot − (rate × one stake), which is what the player is quoted.
+    assert.equal(payoutFor(500, 0.05), 975);    // 1000 − 25
+    assert.equal(payoutFor(1000, 0.05), 1950);  // 2000 − 50
+    assert.equal(payoutFor(50, 0.05), 98);      // 100 − 2.5, rounded
   });
 
   await t.test('honours a changed commission', () => {
     assert.equal(payoutFor(500, 0), 1000);
-    assert.equal(payoutFor(500, 0.10), 900);
+    // 10% of ONE ₹500 stake is ₹50, so the winner takes ₹950 of the ₹1,000 pot.
+    assert.equal(payoutFor(500, 0.10), 950);
   });
 
   await t.test('rounds to whole rupees', () => {
@@ -190,50 +194,73 @@ test('settings defaults are complete and numeric', () => {
 /* ---------------- tiered commission ---------------- */
 
 test('commission tiers', async t => {
-  await t.test('a stake below the threshold takes the higher rate', () => {
+  /* The published rule: "50 से 500 तक — 5%", "500 से ज्यादा — 3%". The
+     threshold sits on the HIGHER side, so ₹500 pays 5% and it takes ₹501 to
+     reach 3%. That boundary is the whole point of these tests. */
+
+  await t.test('a stake up to the threshold takes the higher rate', () => {
     for (const amount of [50, 100, 250, 499]) {
-      assert.equal(commissionFor(amount, {}), 0.035, `₹${amount} should be 3.5%`);
+      assert.equal(commissionFor(amount, {}), 0.08, `₹${amount} should be 8%`);
     }
   });
 
-  await t.test('the threshold itself takes the lower rate', () => {
-    // "below ₹500" is the higher tier; ₹500 is not below ₹500.
-    assert.equal(commissionFor(500, {}), 0.025);
+  await t.test('the threshold itself takes the HIGHER rate', () => {
+    // "50 to 500" includes 500. Flipping this comparison is a silent 2%
+    // giveaway on the single most common stake on the board.
+    assert.equal(commissionFor(500, {}), 0.08);
   });
 
-  await t.test('a stake above the threshold takes the lower rate', () => {
+  await t.test('one rupee past the threshold takes the lower rate', () => {
     for (const amount of [501, 1000, 25000, 100000]) {
-      assert.equal(commissionFor(amount, {}), 0.025, `₹${amount} should be 2.5%`);
+      assert.equal(commissionFor(amount, {}), 0.05, `₹${amount} should be 5%`);
     }
   });
 
   await t.test('the constants match the tiers', () => {
     assert.equal(COMMISSION_THRESHOLD, 500);
-    assert.equal(COMMISSION_UNDER, 0.035);
-    assert.equal(COMMISSION_FROM, 0.025);
+    assert.equal(COMMISSION_UNDER, 0.08);
+    assert.equal(COMMISSION_FROM, 0.05);
   });
 
-  await t.test('settings override the built-in tiers', () => {
-    const s = { commission_threshold: 1000, commission_under: 0.05, commission_from: 0.01 };
-    assert.equal(commissionFor(999, s), 0.05);
-    assert.equal(commissionFor(1000, s), 0.01);
+  await t.test('the defaults match the constants', () => {
+    assert.equal(SETTINGS_DEFAULTS.commission_threshold, COMMISSION_THRESHOLD);
+    assert.equal(SETTINGS_DEFAULTS.commission_under, COMMISSION_UNDER);
+    assert.equal(SETTINGS_DEFAULTS.commission_from, COMMISSION_FROM);
+  });
+
+  await t.test('settings override the built-in tiers, boundary included', () => {
+    const s = { commission_threshold: 1000, commission_under: 0.09, commission_from: 0.01 };
+    assert.equal(commissionFor(999, s), 0.09);
+    assert.equal(commissionFor(1000, s), 0.09, 'the threshold belongs to the higher tier');
+    assert.equal(commissionFor(1001, s), 0.01);
   });
 
   await t.test('nonsense settings fall back rather than producing NaN', () => {
     for (const bad of [{ commission_under: 'x' }, { commission_under: NaN },
                        { commission_under: -1 }, { commission_under: 2 }, {}]) {
-      assert.equal(commissionFor(100, bad), 0.035, JSON.stringify(bad));
+      assert.equal(commissionFor(100, bad), 0.08, JSON.stringify(bad));
     }
-    assert.equal(commissionFor(100, { commission_threshold: 'x' }), 0.035);
+    assert.equal(commissionFor(100, { commission_threshold: 'x' }), 0.08);
   });
 });
 
 test('prize at each tier', async t => {
-  await t.test('pays the doubled stake less the tier rate', () => {
-    assert.equal(prizeFor(100, {}), 193);      // 200 - 3.5%
-    assert.equal(prizeFor(499, {}), 963);
-    assert.equal(prizeFor(500, {}), 975);      // 1000 - 2.5%
-    assert.equal(prizeFor(1000, {}), 1950);
+  await t.test('charges the rate on one stake, not on the pot', () => {
+    /* The rule as a player is quoted it: "you bet ₹500, we take 8%". So the
+       house takes ₹40 from the ₹1,000 pot, not ₹80. */
+    assert.equal(prizeFor(100, {}), 192);      // pot 200, 8% of 100 = 8
+    assert.equal(prizeFor(499, {}), 958);      // pot 998, 8% of 499 = 40
+    assert.equal(prizeFor(500, {}), 960);      // pot 1000, 8% of 500 = 40
+    assert.equal(prizeFor(501, {}), 977);      // pot 1002, 5% of 501 = 25
+    assert.equal(prizeFor(1000, {}), 1950);    // pot 2000, 5% of 1000 = 50
+  });
+
+  await t.test('the house take is exactly the quoted rate on one stake', () => {
+    for (const amount of [50, 100, 499, 500, 501, 1000, 25000]) {
+      const taken = amount * 2 - prizeFor(amount, {});
+      assert.equal(taken, Math.round(amount * commissionFor(amount, {})),
+        `₹${amount}: the house took ${taken}, not the quoted rate on one stake`);
+    }
   });
 
   await t.test('crossing the threshold never pays less for a bigger stake', () => {
@@ -258,7 +285,7 @@ test('prize at each tier', async t => {
   });
 
   await t.test('payoutFor still takes an explicit rate', () => {
-    assert.equal(payoutFor(500, 0.05), 950);
+    assert.equal(payoutFor(500, 0.08), 960);
     assert.equal(payoutFor(500, 0), 1000);
   });
 });

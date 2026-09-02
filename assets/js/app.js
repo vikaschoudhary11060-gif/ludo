@@ -28,14 +28,19 @@
   /* The commission depends on the stake, so the prize must be computed the
      same way the server computes it. Falls back to the published defaults
      until /api/config lands. */
-  const TIERS = { threshold: 500, under: 0.035, from: 0.025 };
+  /* Mirrors server/src/lib/config.js, boundary included: the threshold
+     amount is on the higher tier ("₹50 से ₹500 तक: 8%"), so this is `<=`. */
+  const TIERS = { threshold: 500, under: 0.08, from: 0.05 };
   function commissionFor(amount) {
     const t = (state.config && state.config.commissionTiers) || TIERS;
     const threshold = Number.isFinite(t.threshold) ? t.threshold : TIERS.threshold;
-    const rate = Number(amount) < threshold ? t.under : t.from;
+    const rate = Number(amount) <= threshold ? t.under : t.from;
     return Number.isFinite(rate) && rate >= 0 && rate < 1 ? rate : TIERS.from;
   }
-  const prizeFor = amount => Math.round(amount * 2 * (1 - commissionFor(amount)));
+  /* The commission is charged on ONE stake, so it is subtracted from the pot
+     once — `2 - rate`, not `2 * (1 - rate)`. Getting this wrong here shows a
+     prize the server will not pay. */
+  const prizeFor = amount => Math.round(amount * (2 - commissionFor(amount)));
 
   /** The tiers actually in force — the server's if it published them, else the
       built-in defaults. Never undefined, so callers can always show the rule. */

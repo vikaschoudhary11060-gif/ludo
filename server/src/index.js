@@ -68,7 +68,9 @@ app.get('/api/config', async (_req, res) => {
     commissionTiers: {
       threshold: s.commission_threshold,
       under: commissionFor(0, s),
-      from: commissionFor(s.commission_threshold, s),
+      /* One rupee past the threshold: the threshold amount itself is on the
+         higher tier now, so sampling at it would publish the wrong pair. */
+      from: commissionFor(s.commission_threshold + 1, s),
     },
     withdrawOpen: !!s.withdraw_open, depositOpen: !!s.deposit_open,
     maintenance: !!s.maintenance,

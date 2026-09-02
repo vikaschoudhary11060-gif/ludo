@@ -325,6 +325,153 @@ test('the alert does not depend on a socket frame arriving', async t => {
 });
 
 /* ---------------------------------------------------------------- */
+test('the game history screen', async t => {
+  const js = read('assets/js/gamehistory.js');
+
+  await t.test('hides a battle that was called off before it started', () => {
+    /* Set a battle, cancel it, nothing happened. The stake went out and came
+       straight back and there is no game to look at. */
+    assert.match(js, /const isNoise = b => b\.status === 'cancelled' && !everStarted\(b\)/);
+    assert.match(js, /all = list\.filter\(b => !isNoise\(b\)\)/,
+      'the noise filter is never applied');
+  });
+
+  await t.test('keeps a cancellation that happened after the room code', () => {
+    // Once the code is shared the two players were in a Ludo room; that
+    // cancellation is a real event with a story behind it.
+    assert.match(js, /const everStarted = b => !!\(b\.roomSetAt \|\| b\.roomCode\)/);
+  });
+
+  await t.test('shows the opening and closing balance on each row', () => {
+    assert.match(js, /function balanceLine/);
+    assert.match(js, /Opening/);
+    assert.match(js, /Closing/);
+    assert.match(js, /openingBalance/);
+    assert.match(js, /closingBalance/);
+  });
+
+  await t.test('draws no balance line when the server could not compute one', () => {
+    assert.match(js, /if \(!Number\.isFinite\(open\) \|\| !Number\.isFinite\(close\)\) return ''/,
+      'a missing balance would render as ₹NaN');
+  });
+
+  await t.test('falls back to the plain list against an older server', () => {
+    assert.match(js, /Api\.battles\.history\(\)/);
+    assert.match(js, /Api\.battles\.mine\(\)/, 'no fallback if /history is not deployed yet');
+  });
+});
+
+/* ---------------------------------------------------------------- */
+test('the rules screen', async t => {
+  const page = read('battles.html');
+  const js = read('assets/js/battles.js');
+
+  await t.test('states the fraud penalty', () => {
+    assert.match(page, /गलत रिजल्ट डालता है या किसी भी प्रकार का फ्रॉड/);
+    assert.match(page, /को 0/);
+  });
+
+  await t.test('covers every section that was asked for', () => {
+    for (const heading of [
+      'Game Exit करने पर',
+      'रिजल्ट पोस्ट करने का समय',
+      'गलत स्क्रीनशॉट पोस्ट करना',
+      'गेम कैंसिल',
+      'रिजल्ट पोस्ट करने के बाद बदलाव नहीं',
+      'नेटवर्क समस्या',
+      'Commission Rates',
+    ]) {
+      assert.ok(page.includes(heading), `the rules are missing "${heading}"`);
+    }
+  });
+
+  await t.test('the exit penalties are stated exactly', () => {
+    assert.match(page, /30% Loss/);
+    assert.match(page, /100% Loss/);
+  });
+
+  await t.test('the reporting window is rendered, never hard-coded', () => {
+    /* The sweeper decides this. Writing "15 मिनट" into the markup would let
+       the promise and the enforcement drift apart silently. */
+    assert.ok(page.includes('id="rule-grace"'), 'no element to render the window into');
+    assert.match(js, /conf\.claimGraceMs \/ 60000/,
+      'the window is not taken from the server');
+  });
+
+  await t.test('the commission table matches the published tiers', () => {
+    assert.match(page, /50 से 500 तक/);
+    assert.match(page, /500 से ज्यादा/);
+    assert.match(js, /से ज्यादा`, pct\(tiers\.from\)/,
+      'the table is not driven by the live rates');
+  });
+});
+
+/* ---------------------------------------------------------------- */
+test('the commission tiers players are shown', async t => {
+  const app = read('assets/js/app.js');
+
+  await t.test('the browser agrees with the server on the boundary', () => {
+    /* "50 से 500 तक — 5%" puts the threshold on the higher tier. If the
+       client used `<` the advertised prize for a ₹500 battle would be ₹975
+       and the paid prize ₹960 — a number that is wrong on the busiest stake
+       on the board. */
+    assert.match(app, /Number\(amount\) <= threshold \? t\.under : t\.from/);
+    assert.match(app, /under: 0\.08, from: 0\.05/);
+  });
+
+  await t.test('the prize shown is the prize paid — one stake, not the pot', () => {
+    /* The two formulas must be the same shape. `2 * (1 - rate)` charges the
+       rate against both stakes and advertises a prize ₹40 below what the
+       server actually pays on a ₹500 battle. */
+    assert.match(app, /Math\.round\(amount \* \(2 - commissionFor\(amount\)\)\)/,
+      'the browser charges commission on the pot, not on one stake');
+    assert.doesNotMatch(app, /amount \* 2 \* \(1 - commissionFor/,
+      'the old pot-based formula is still in the browser');
+
+    const config = read('server/src/lib/config.js');
+    assert.match(config, /Math\.round\(amount \* \(2 - commission\)\)/,
+      'the server no longer matches the browser');
+  });
+
+  await t.test('the server publishes the above-threshold rate from past it', () => {
+    const index = read('server/src/index.js');
+    assert.match(index, /commissionFor\(s\.commission_threshold \+ 1, s\)/,
+      'sampling at the threshold now returns the *under* rate, not the above one');
+  });
+});
+
+/* ---------------------------------------------------------------- */
+test('the interface speaks Hindi by default', async t => {
+  const js = read('assets/js/i18n.js');
+
+  await t.test('defaults to hi', () => {
+    assert.match(js, /const DEFAULT_LANG = 'hi';/);
+    assert.match(js, /localStorage\.getItem\(LANG_KEY\) \|\| DEFAULT_LANG/);
+  });
+
+  await t.test('leaves already-Hindi copy alone', () => {
+    /* The rules keep some English on purpose — Game Exit, Win, Live Chat,
+       Cancel. Word-by-word translation turned "गेम को सीधा Cancel कर दिया
+       जायेगा" into "सीधा रद्द करें कर दिया जायेगा", which is nonsense on a
+       screen players are meant to take seriously. */
+    assert.match(js, /const isProtected = node =>/);
+    assert.match(js, /closest\('\[data-no-i18n\]'\)/);
+    assert.match(js, /if \(isProtected\(node\)\) return NodeFilter\.FILTER_REJECT/,
+      'the tree walker still descends into protected copy');
+    assert.match(js, /if \(isProtected\(node\)\) continue;/,
+      'the mutation observer still rewrites protected copy');
+    assert.ok(read('battles.html').includes('data-no-i18n'),
+      'the rules card is not marked as already translated');
+  });
+
+  await t.test('a stored choice still wins', () => {
+    // Switching to English has to stick, or the toggle is decorative.
+    assert.ok(js.indexOf("localStorage.getItem(LANG_KEY) ||") < js.indexOf("DEFAULT_LANG;") + 200);
+    assert.match(js, /localStorage\.setItem\(LANG_KEY, next\)/);
+  });
+});
+
+/* ---------------------------------------------------------------- */
 test('the admin alerts inbox', async t => {
   const page = read('admin.html');
   const js = read('assets/js/admin.js');

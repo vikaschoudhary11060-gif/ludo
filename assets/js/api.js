@@ -190,6 +190,10 @@
       list: (mode, status) =>
         request(`/battles?mode=${mode}${status ? `&status=${status}` : ''}`),
       mine:   () => request('/battles/mine'),
+      /* The history screen, with the wallet balance before and after each
+         game. Separate from mine() because the balance reconstruction reads
+         the ledger, and the lobby polls mine() every few seconds. */
+      history: () => request('/battles/history'),
       get:    id => request('/battles/' + id),
       create: (mode, amount) => request('/battles', { method: 'POST', body: { mode, amount } }),
       accept: id => request(`/battles/${id}/accept`, { method: 'POST' }),

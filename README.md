@@ -202,7 +202,9 @@ as `pending`. An admin then either **marks it paid** (ledger entry flips to `suc
 - Three buckets: `deposit` (spendable, not withdrawable), `winnings` (spendable **and**
   withdrawable), `referral` (must be redeemed into deposit first).
 - Spending takes from `deposit` first, then `winnings`.
-- Winner receives `round(stake × 2 × 0.95)` — 5% commission.
+- Winner receives `round(stake × (2 − rate))` — the commission is charged on **one**
+  player's stake, not on the pot. Default tiers: 8% up to ₹500 (inclusive), 5% above it.
+  A ₹500 v ₹500 battle takes ₹40 and pays the winner ₹960.
 - Referrers earn 2% of each settled battle stake.
 - Every balance change is wrapped in a SQLite transaction and written to `transactions`.
 

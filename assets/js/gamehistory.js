@@ -9,10 +9,39 @@
                   running:'bg-gold/25 text-gold-deep', waiting:'bg-brand/15 text-brand',
                   open:'bg-surface-page text-muted-dark', disputed:'bg-live/15 text-live' };
 
+  /* Was this battle ever actually a match?
+
+     A player who sets a battle and calls it straight off has not played
+     anything — the stake went out and came back and nothing happened in
+     between. Those rows are noise here, and there can be a lot of them. The
+     room code is the line: once it is shared the two players are in a Ludo
+     room, so a cancellation after that point is a real event with a real
+     story and belongs in the history.
+
+     `roomSetAt` survives cancellation (cancel only writes status and the
+     reason), so it stays a reliable marker after the fact. */
+  const everStarted = b => !!(b.roomSetAt || b.roomCode);
+  const isNoise = b => b.status === 'cancelled' && !everStarted(b);
+
   function apply() {
     rows = all.filter(b => filter === 'all' ? true
       : filter === 'running' ? ['running','waiting','open'].includes(b.status)
       : b.status === filter);
+  }
+
+  /* Balances are omitted for a battle whose ledger rows fell outside the
+     window the server reconstructs from, so both have to be present before
+     the line is worth drawing. */
+  function balanceLine(b) {
+    const open = b.openingBalance, close = b.closingBalance;
+    if (!Number.isFinite(open) || !Number.isFinite(close)) return '';
+    const diff = close - open;
+    const tone = diff > 0 ? 'text-cta' : diff < 0 ? 'text-live' : 'text-muted';
+    return `<div class="mt-2 flex items-center justify-between border-t border-line pt-2 text-[10.5px]">
+      <span class="text-muted">Opening <span class="font-bold text-ink">${money(open)}</span></span>
+      <span class="font-bold ${tone}">${diff > 0 ? '+' : ''}${money(diff)}</span>
+      <span class="text-muted">Closing <span class="font-bold text-ink">${money(close)}</span></span>
+    </div>`;
   }
 
   function card(b) {
@@ -32,6 +61,7 @@
         <span class="text-body font-black text-ink">${money(b.amount)}</span>
       </div>
       ${delta ? `<p class="mt-1 text-meta font-bold ${iWon ? 'text-cta' : 'text-live'}">${delta}</p>` : ''}
+      ${balanceLine(b)}
     </a></li>`;
   }
 
@@ -46,7 +76,15 @@
 
   K.ready.then(async () => {
     if (!K.requireSession()) return;
-    try { all = (await Api.battles.mine()).battles; } catch { all = []; }
+    let list = [];
+    try {
+      list = (await Api.battles.history()).battles;
+    } catch {
+      /* An older server has no /history. Fall back to the plain list so the
+         page still works — it just shows no balances. */
+      try { list = (await Api.battles.mine()).battles; } catch { list = []; }
+    }
+    all = list.filter(b => !isNoise(b));
     apply(); K.revealAfter('#gh-skeleton', '#gh-content'); render();
 
     $$('[data-filter]').forEach(btn => btn.addEventListener('click', () => {

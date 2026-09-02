@@ -114,7 +114,7 @@ test('the values the panel accepts', async t => {
     await save({ referral_rate: 0.03 }, owner.token);
     const s = await stored();
     assert.equal(s.battle_limit, 2);
-    assert.equal(s.commission_from, 0.025);
+    assert.equal(s.commission_from, 0.05);
   });
 
   await t.test('writes an audit entry naming what changed', async () => {

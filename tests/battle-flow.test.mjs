@@ -215,24 +215,38 @@ test('settling a battle uses the commission the admin set', async t => {
     return api.post(`/api/battles/${id}/result`, { claim: 'lost' }, guest.token);
   };
 
-  await t.test('the default tiers: 3.5% below ₹500, 2.5% at or above', async () => {
+  await t.test('the default tiers: 8% up to ₹500, 5% above it, on one stake', async () => {
     await reset();
     const { host, guest } = await twoPlayers({ deposit: 10000, winnings: 0 });
     const r = await play(host, guest, 100);
     assert.equal(r.body.state, 'completed');
-    assert.equal(r.body.payout, Math.round(200 * (1 - 0.035)), 'a ₹100 battle should pay ₹193');
+    assert.equal(r.body.payout, 192, 'pot ₹200 less 8% of one ₹100 stake');
+
+    // ₹500 is the threshold and belongs to the 8% tier, not the 5% one.
+    await reset();
+    const at = await twoPlayers({ deposit: 10000, winnings: 0 });
+    assert.equal((await play(at.host, at.guest, 500)).body.payout, 960,
+      'a ₹500 v ₹500 battle takes ₹40 and pays ₹960');
 
     await reset();
-    const pair = await twoPlayers({ deposit: 10000, winnings: 0 });
-    const big = await play(pair.host, pair.guest, 500);
-    assert.equal(big.body.payout, Math.round(1000 * (1 - 0.025)), 'a ₹500 battle should pay ₹975');
+    const above = await twoPlayers({ deposit: 10000, winnings: 0 });
+    assert.equal((await play(above.host, above.guest, 1000)).body.payout, 1950,
+      'a ₹1,000 v ₹1,000 battle takes ₹50 and pays ₹1,950');
+  });
+
+  await t.test('the house takes exactly the quoted rate on one stake', async () => {
+    await reset();
+    const { host, guest } = await twoPlayers({ deposit: 10000, winnings: 0 });
+    const r = await play(host, guest, 500);
+    assert.equal(1000 - r.body.payout, 40,
+      'the pot is ₹1,000 and 8% of one ₹500 stake is ₹40');
   });
 
   await t.test('a rate the admin changes applies to the very next settlement', async () => {
     await reset({ commission_under: 0.10, commission_from: 0.10 });
     const { host, guest } = await twoPlayers({ deposit: 10000, winnings: 0 });
     const r = await play(host, guest, 1000);
-    assert.equal(r.body.payout, 1800, '10% commission on a ₹1,000 battle should pay ₹1,800');
+    assert.equal(r.body.payout, 1900, '10% of one ₹1,000 stake is ₹100, leaving ₹1,900');
   });
 
   await t.test('zero commission pays the whole pot', async () => {

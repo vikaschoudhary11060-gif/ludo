@@ -7,6 +7,14 @@
    ============================================================ */
 
 const matches = (doc, filter) => Object.entries(filter).every(([key, cond]) => {
+  /* Logical operators take a list of sub-filters rather than a field
+     condition, so they have to be handled before `doc[key]` is read — `$or`
+     was previously treated as a field name, which quietly matched nothing and
+     made every $or query look like an empty collection. */
+  if (key === '$or')  return cond.some(c => matches(doc, c));
+  if (key === '$and') return cond.every(c => matches(doc, c));
+  if (key === '$nor') return !cond.some(c => matches(doc, c));
+
   const v = doc[key];
   if (cond === null || typeof cond !== 'object' || Array.isArray(cond)) return v === cond;
   return Object.entries(cond).every(([op, operand]) => {

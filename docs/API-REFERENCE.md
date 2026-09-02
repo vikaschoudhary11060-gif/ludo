@@ -178,7 +178,7 @@ Role required shown as (viewer)/(admin)/(owner).
 | POST | `/api/admin/admins` | owner | `{ username, name, password, role }` |
 | PATCH | `/api/admin/admins/:id` | owner | `{ active?, role? }` |
 | GET | `/api/admin/settings` | viewer | current settings |
-| PATCH | `/api/admin/settings` | owner | `withdraw_open`, `deposit_open`, `maintenance`, `commission_threshold`, `commission_under`, `commission_from`, `referral_rate`, `signup_bonus`, `referral_bonus`, `battle_limit`, `upi_id`, `notice`. Rates are fractions (0.035 = 3.5%); bonuses are whole rupees. Every value applies to the next request — no restart. |
+| PATCH | `/api/admin/settings` | owner | `withdraw_open`, `deposit_open`, `maintenance`, `commission_threshold`, `commission_under`, `commission_from`, `referral_rate`, `signup_bonus`, `referral_bonus`, `battle_limit`, `upi_id`, `notice`. Rates are fractions (0.08 = 8%) and are charged on one player's stake, not the pot; `commission_under` includes the threshold itself. Bonuses are whole rupees. Every value applies to the next request — no restart. |
 
 ---
 

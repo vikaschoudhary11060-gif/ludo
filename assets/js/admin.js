@@ -827,13 +827,13 @@
                  'Off: players cannot submit new deposit requests.') +
           toggle('maintenance', 'Maintenance mode'))}
 
-        ${group('Game commission', 'Taken from the pot before the winner is paid. Small battles carry the higher rate.',
-          percent('commission_under', 'Commission below the threshold (%)',
-                  'e.g. 3.5 means a ₹100 battle pays the winner ₹193.', 3.5) +
-          percent('commission_from', 'Commission at or above the threshold (%)',
-                  'e.g. 2.5 means a ₹500 battle pays the winner ₹975.', 2.5) +
+        ${group('Game commission', 'Charged on ONE player’s stake — not on the pot — and taken before the winner is paid.',
+          percent('commission_under', 'Commission up to the threshold (%)',
+                  'The threshold itself is included. e.g. 8 on a ₹500 v ₹500 battle takes ₹40 and pays the winner ₹960.', 8) +
+          percent('commission_from', 'Commission above the threshold (%)',
+                  'e.g. 5 on a ₹1,000 v ₹1,000 battle takes ₹50 and pays the winner ₹1,950.', 5) +
           rupees('commission_threshold', 'Threshold (₹)',
-                 'Battles below this amount take the higher rate.', 500))}
+                 'Battles up to and including this amount take the higher rate.', 500))}
 
         ${group('Referral &amp; bonuses', 'Applied live — the next signup and the next settled battle already use these.',
           percent('referral_rate', 'Referral commission (%)',

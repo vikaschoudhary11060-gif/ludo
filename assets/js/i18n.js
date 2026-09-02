@@ -135,7 +135,12 @@
   };
 
   const DICTS = { en: null, hi: HI };
-  let lang = localStorage.getItem(LANG_KEY) || 'en';
+  /* Hindi unless the player has chosen otherwise. Most of the audience reads
+     Hindi first, and the rules screen is written in it — an English shell
+     around Hindi rules is the worst of both. A stored choice always wins, so
+     switching to English is one tap and it sticks. */
+  const DEFAULT_LANG = 'hi';
+  let lang = localStorage.getItem(LANG_KEY) || DEFAULT_LANG;
 
   /** Translate a single string. Falls back to the original. */
   function t(text) {
@@ -149,12 +154,25 @@
 
   const SKIP = new Set(['SCRIPT', 'STYLE', 'CODE', 'PRE', 'TEXTAREA']);
 
+  /* Content that is already written in the target language, and must be left
+     exactly as the author wrote it. Translating word-by-word inside it does
+     real damage: the rules say "गेम को सीधा Cancel कर दिया जायेगा", and
+     swapping the one English word for its dictionary entry produced "सीधा
+     रद्द करें कर दिया जायेगा" — grammatical nonsense in a screen players are
+     expected to take seriously. Mark such a subtree `data-no-i18n`. */
+  const isProtected = node => {
+    const el = node.nodeType === 1 ? node : node.parentNode;
+    return !!(el && el.closest && el.closest('[data-no-i18n]'));
+  };
+
   function translateTree(root) {
     if (lang === 'en' || !DICTS[lang]) return;
+    if (isProtected(root)) return;
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
         if (!node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
         if (SKIP.has(node.parentNode.nodeName)) return NodeFilter.FILTER_REJECT;
+        if (isProtected(node)) return NodeFilter.FILTER_REJECT;
         return NodeFilter.FILTER_ACCEPT;
       },
     });
@@ -167,10 +185,12 @@
     }
     // placeholders and labels are not text nodes
     root.querySelectorAll('[placeholder]').forEach(el => {
+      if (isProtected(el)) return;
       const hit = DICTS[lang][el.getAttribute('placeholder').trim()];
       if (hit) el.setAttribute('placeholder', hit);
     });
     root.querySelectorAll('[aria-label]').forEach(el => {
+      if (isProtected(el)) return;
       const hit = DICTS[lang][el.getAttribute('aria-label').trim()];
       if (hit) el.setAttribute('aria-label', hit);
     });
@@ -198,6 +218,7 @@
     const mo = new MutationObserver(muts => {
       for (const m of muts) {
         for (const node of m.addedNodes) {
+          if (isProtected(node)) continue;
           if (node.nodeType === 1) translateTree(node);
           else if (node.nodeType === 3) {
             const hit = DICTS[lang][node.nodeValue.trim()];

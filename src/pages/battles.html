@@ -119,37 +119,113 @@
 
       <!-- Rules modal -->
       <div class="fixed inset-0 z-50 grid place-items-center bg-black/55 p-4" id="rules-modal" data-modal hidden>
-        <div class="modal-card max-h-[80vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="rules-title">
+        <div class="modal-card max-h-[80vh] overflow-y-auto" role="dialog" aria-modal="true"
+             aria-labelledby="rules-title" data-no-i18n>
           <div class="mb-3 flex items-start justify-between gap-3">
             <h2 class="text-body font-bold text-ink" id="rules-title">Battle rules</h2>
             <button class="icon-btn !h-8 !w-8 !text-ink hover:!bg-line" type="button" data-modal-close aria-label="Close">
               <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
             </button>
           </div>
-          <ol class="list-decimal space-y-2 pl-5 text-[11.25px] leading-[18px] text-ink">
-            <li>Record every game while playing. Video proof is necessary for cancellation.</li>
-            <li>The creator sets an 8-digit room code. Both players must join that room.</li>
-            <li>Submit your result honestly. Wrong updates lead to a penalty.</li>
-            <li>If the opponent does not join within 5 minutes, cancel to get a refund.</li>
-            <li>Winnings are the amount doubled, minus the commission shown below.</li>
-            <li>Abusing or stalling can award the battle to your opponent.</li>
-          </ol>
-          <h3 class="mt-5 text-body font-bold text-ink">Commission rates</h3>
+          <div class="space-y-4 text-[11.25px] leading-[19px] text-ink">
+            <p class="rounded-tile border-l-4 border-live bg-live/10 p-2.5 font-medium">
+              अगर कोई गलत रिजल्ट डालता है या किसी भी प्रकार का फ्रॉड करता है तो
+              <strong>🆔 को 0</strong> कर दिया जाएगा और ब्लॉक भी की जा सकती है।
+            </p>
+
+            <section>
+              <h3 class="text-body font-bold text-ink">Game Exit करने पर</h3>
+              <ul class="mt-1.5 space-y-1.5">
+                <li class="flex gap-2"><span class="text-cta">&#10003;</span><span>
+                  यदि एक टोकन बाहर है तो <strong>30% Loss</strong> दिया जायेगा, लेकिन यदि गेम खेला गया है और
+                  2 काटी बाहर आयी हो तो गेम को लेफ्ट करने वाले को <strong>100% Loss</strong> कर दिया जायेगा।
+                </span></li>
+                <li class="flex gap-2"><span class="text-cta">&#10003;</span><span>
+                  यदि आप Game Exit करते हैं तो आपको <strong>100% Loss</strong> कर दिया जायेगा &mdash; चाहे आपका
+                  Auto Exit हो या जान-बूझकर Exit किया हो। यदि दोनों प्लेयर में से किसी की काटी खुली नहीं है
+                  तो उसे हम कैंसिल कर सकते हैं।
+                </span></li>
+              </ul>
+            </section>
+
+            <section>
+              <h3 class="text-body font-bold text-ink">रिजल्ट पोस्ट करने का समय</h3>
+              <ul class="mt-1.5 space-y-1.5">
+                <li class="flex gap-2"><span class="text-cta">&#10003;</span><span>
+                  Game समाप्त होने के <strong><span id="rule-grace">15 मिनट</span></strong> के अंदर रिजल्ट डालना
+                  आवश्यक है। अन्यथा सामने वाले प्लेयर के रिजल्ट के आधार पर गेम अपडेट कर दिया जाएगा &mdash;
+                  चाहे आप जीतें या हारें। इसके बाद कोई बदलाव नहीं किया जाएगा।
+                </span></li>
+              </ul>
+            </section>
+
+            <section>
+              <h3 class="text-body font-bold text-ink">गलत स्क्रीनशॉट पोस्ट करना</h3>
+              <ul class="mt-1.5 space-y-1.5">
+                <li class="flex gap-2"><span class="text-cta">&#10003;</span><span>
+                  Win होने के बाद आप गलत स्क्रीनशॉट डालते हैं तो गेम को सीधा <strong>Cancel</strong> कर दिया
+                  जायेगा। इसलिए यदि आप स्क्रीनशॉट लेना भूल गए हैं तो पहले Live Chat में एडमिन से संपर्क करें,
+                  उसके बाद ही उनके बताये अनुसार रिजल्ट पोस्ट करें। इसके बाद कोई बदलाव नहीं किया जाएगा।
+                </span></li>
+              </ul>
+            </section>
+
+            <section>
+              <h3 class="text-body font-bold text-ink">गेम कैंसिल &#10006; करने की स्थिति</h3>
+              <ul class="mt-1.5 space-y-1.5">
+                <li class="flex gap-2"><span class="text-cta">&#10003;</span><span>
+                  दोनों प्लेयर की टोकन (काटी) घर से बाहर न आयी हो तो लेफ्ट होकर गेम कैंसिल &#10006; किया जा
+                  सकता है। <em>[कैंसिल प्रूफ करने के लिए वीडियो आवश्यक होगा]</em>
+                </span></li>
+                <li class="flex gap-2"><span class="text-cta">&#10003;</span><span>
+                  'कैंसिल' रिजल्ट डालने के बाद गेम प्ले करके जीत जाते हैं तो उसमें हमारी कोई ज़िम्मेदारी नहीं
+                  होगी। अतः गेम कैंसिल करने के बाद स्टार्ट न करें, अन्यथा वो कैंसिल &#10006; ही माना जायेगा।
+                </span></li>
+              </ul>
+            </section>
+
+            <section>
+              <h3 class="text-body font-bold text-ink">रिजल्ट पोस्ट करने के बाद बदलाव नहीं</h3>
+              <ul class="mt-1.5 space-y-1.5">
+                <li class="flex gap-2"><span class="text-cta">&#10003;</span><span>
+                  एक बार रिजल्ट डालने के बाद बदला नहीं जा सकता, इसलिए सोच-समझकर रिजल्ट पोस्ट करें।
+                </span></li>
+                <li class="flex gap-2"><span class="text-cta">&#10003;</span><span>
+                  गलत रिजल्ट डालने पर पेनल्टी भी लगायी जाएगी &mdash; चाहे आपने वो गलती से डाला हो या
+                  जान-बूझकर।
+                </span></li>
+              </ul>
+            </section>
+
+            <section>
+              <h3 class="text-body font-bold text-ink">नेटवर्क समस्या</h3>
+              <ul class="mt-1.5 space-y-1.5">
+                <li class="flex gap-2"><span class="text-cta">&#10003;</span><span>
+                  अपने नेटवर्क की समस्या चेक करके खेलना चाहिए &mdash; यह स्वयं की जिम्मेदारी होगी।
+                </span></li>
+              </ul>
+            </section>
+          </div>
+
+          <h3 class="mt-5 text-body font-bold text-ink">Commission Rates</h3>
           <table class="mt-2 w-full border-collapse text-[11.25px]">
             <thead>
               <tr class="bg-surface-page text-left">
-                <th class="border border-line px-2 py-1.5 font-bold text-ink">Battle amount</th>
-                <th class="border border-line px-2 py-1.5 font-bold text-ink">Commission</th>
+                <th class="border border-line px-2 py-1.5 font-bold text-ink">बेट कॉइन</th>
+                <th class="border border-line px-2 py-1.5 font-bold text-ink">कमीशन चार्ज</th>
               </tr>
             </thead>
             <tbody id="commission-rows" class="text-ink">
-              <tr><td class="border border-line px-2 py-1.5">All amounts</td>
-                  <td class="border border-line px-2 py-1.5" id="commission-value">5%</td></tr>
+              <tr><td class="border border-line px-2 py-1.5">50 से 500 तक</td>
+                  <td class="border border-line px-2 py-1.5">8%</td></tr>
+              <tr><td class="border border-line px-2 py-1.5">500 से ज्यादा</td>
+                  <td class="border border-line px-2 py-1.5">5%</td></tr>
             </tbody>
           </table>
           <p class="mt-2 text-[11.25px] text-muted">
-            Winner receives the battle amount doubled, less commission.
-            A &#8377;500 battle pays <span id="commission-example">&#8377;950</span>.
+            कमीशन आपकी अपनी बेट राशि पर लगता है, दोनों की कुल राशि पर नहीं।
+            जैसे &#8377;500 बनाम &#8377;500 की बेट में 8% यानी &#8377;40 कमीशन कटता है और
+            विजेता को <span id="commission-example">&#8377;960</span> मिलते हैं।
           </p>
           <button class="btn btn-primary btn-block mt-5" type="button" data-modal-close>Got it</button>
         </div>
