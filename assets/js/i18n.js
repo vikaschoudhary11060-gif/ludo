@@ -114,7 +114,13 @@
 
     // support
     'Talk to us': 'हमसे बात करें', 'Live chat support': 'लाइव चैट सहायता',
-    'Open Telegram': 'टेलीग्राम खोलें', 'Chat on WhatsApp': 'व्हाट्सएप पर चैट करें',
+    'Deposit or withdrawal help': 'डिपॉज़िट या विदड्रॉल में मदद',
+    'Problem with a game or result': 'गेम या रिजल्ट में समस्या',
+    'Live chat': 'लाइव चैट', 'Fastest': 'सबसे तेज़',
+    'All three open the same conversation with our team. Prefer email? Use the form below.':
+      'तीनों हमारी टीम के साथ एक ही चैट खोलते हैं। ईमेल पसंद है? नीचे दिया फ़ॉर्म भरें।',
+    'Sign in to use live chat, or send us the form below':
+      'लाइव चैट के लिए साइन इन करें, या नीचे दिया फ़ॉर्म भेजें',
     'Common questions': 'सामान्य प्रश्न', 'Send a message': 'संदेश भेजें',
     'Topic': 'विषय', 'Email': 'ईमेल', 'Message': 'संदेश', 'Send message': 'संदेश भेजें',
 

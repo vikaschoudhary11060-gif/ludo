@@ -105,6 +105,13 @@ async function ensureIndexes() {
     d.collection('chat_messages').createIndex({ thread_id: 1, created_at: 1 }),
     d.collection('push_subscriptions').createIndex({ endpoint: 1 }, { unique: true }),
     d.collection('referrals').createIndex({ referrer_id: 1, referee_id: 1 }, { unique: true }),
+    /* One row per referral payout, so the admin console can list transfers by
+       time, by referrer or by the player whose game paid for them without
+       scanning the whole wallet ledger. */
+    d.collection('referral_earnings').createIndex({ created_at: -1 }),
+    d.collection('referral_earnings').createIndex({ referrer_id: 1, created_at: -1 }),
+    d.collection('referral_earnings').createIndex({ referee_id: 1, created_at: -1 }),
+    d.collection('referral_earnings').createIndex({ battle_id: 1 }),
     d.collection('payment_methods').createIndex({ id: 1 }, { unique: true }),
     d.collection('watchlist').createIndex({ user_id: 1 }, { unique: true }),
     d.collection('settings').createIndex({ id: 1 }, { unique: true }),

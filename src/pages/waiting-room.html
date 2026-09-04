@@ -7,7 +7,24 @@
         <h1 class="mt-6 font-display text-h2 text-ink" id="wr-title">Finding Player!</h1>
         <p class="mt-2 text-body text-muted" id="wr-sub">Prepare for an exciting match!</p>
 
-        <div class="mt-6 w-full max-w-xs rounded-card border border-line bg-surface p-4">
+        <!-- The stake card waits on /battles/:id. Rendering it as a real card
+             holding "₹0" was worse than showing nothing: for the second or
+             two before the fetch lands it reads as a zero-rupee battle. -->
+        <div class="mt-6 w-full max-w-xs" id="wr-skeleton">
+          <p class="sr-only" role="status">Loading battle details&hellip;</p>
+          <div class="rounded-card border border-line bg-surface p-4" aria-hidden="true">
+            <div class="flex items-center justify-between">
+              <div class="skeleton h-3.5 w-16"></div>
+              <div class="skeleton h-3.5 w-20"></div>
+            </div>
+            <div class="mt-3 flex items-center justify-between">
+              <div class="skeleton h-3.5 w-24"></div>
+              <div class="skeleton h-3.5 w-16"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-6 w-full max-w-xs rounded-card border border-line bg-surface p-4" id="wr-card" hidden>
           <div class="flex items-center justify-between text-body-sm">
             <span class="text-muted">Amount</span>
             <span class="font-black text-ink" id="wr-amount">&#8377;0</span>

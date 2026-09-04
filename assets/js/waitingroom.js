@@ -14,6 +14,8 @@
     try { battle = (await Api.battles.get(id)).battle; }
     catch { location.replace('battles.html'); return; }
 
+    // Real numbers in hand — swap the placeholder bars for the card.
+    K.revealAfter('#wr-skeleton', '#wr-card');
     $('#wr-amount').textContent = money(battle.amount);
     $('#wr-prize').textContent = money(K.prizeFor(battle.amount));
     $('#wr-back').href = 'battles.html?mode=' + battle.mode;

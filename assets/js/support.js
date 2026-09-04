@@ -96,18 +96,53 @@
       });
     });
 
+    /* ---- every route into the live chat ----
+
+       There is more than one way in now: the three buttons in "Talk to us",
+       the floating support button that sits on every page, and a `?chat=1`
+       deep link so a tap on that button from another page arrives with the
+       sheet already open. They all have to behave identically, signed in or
+       not, so they are collected here rather than each wiring up its own
+       half of the behaviour. */
+    const CHAT_LINK = 'support.html?chat=1';
+    const triggers = () => $$('[data-modal-open="chat-sheet"]');
+    const wantsChat = new URLSearchParams(location.search).has('chat');
+
+    /* The floating button is a link to this page. When we are already on it,
+       open the sheet instead of reloading. */
+    const fab = $('#fab-support');
+
+    function openSheet() {
+      const sheet = document.getElementById('chat-sheet');
+      if (!sheet) return;
+      sheet.hidden = false;
+      const focusable = sheet.querySelector('button, a, input');
+      if (focusable) focusable.focus();
+    }
+
     /* ---- live chat needs an account ---- */
     if (!K.state.user) {
-      $('#open-chat').addEventListener('click', e => {
+      /* Capture, so this runs before the generic modal opener in app.js and
+         can stop it — otherwise the sheet opens over a chat that cannot load. */
+      const askToSignIn = e => {
+        e.preventDefault();
         e.stopImmediatePropagation();
         toast('Sign in to use live chat', 'error');
-        setTimeout(() => (location.href = 'login.html?next=support.html'), 700);
-      }, true);
+        setTimeout(() => (location.href = 'login.html?next=' + encodeURIComponent(CHAT_LINK)), 700);
+      };
+      triggers().forEach(btn => btn.addEventListener('click', askToSignIn, true));
+      if (fab) fab.addEventListener('click', askToSignIn, true);
+      /* Arriving on ?chat=1 signed out does NOT bounce anyone to the login
+         screen: the FAB is on every page, and the FAQ and the contact form on
+         this one both work signed out. Say what is needed and leave them here. */
+      if (wantsChat) setTimeout(() => toast('Sign in to use live chat, or send us the form below', 'info'), 400);
       return;
     }
 
     try { paintUnread((await Api.chat.unread()).unread); } catch {}
-    $('#open-chat').addEventListener('click', () => setTimeout(load, 100));
+    triggers().forEach(btn => btn.addEventListener('click', () => setTimeout(load, 100)));
+    if (fab) fab.addEventListener('click', e => { e.preventDefault(); openSheet(); setTimeout(load, 100); });
+    if (wantsChat) { openSheet(); setTimeout(load, 100); }
 
     $('#chat-options').addEventListener('click', e => {
       const btn = e.target.closest('button');

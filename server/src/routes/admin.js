@@ -9,6 +9,7 @@ import { bonusFor, BONUS_LABEL, prizeFor } from '../lib/config.js';
 import { payReferralCuts, refundStake } from '../lib/settlement.js';
 import { NOT_BOT } from '../lib/bots.js';
 import playerRoutes from './admin-players.js';
+import referralAdminRoutes from './admin-referrals.js';
 import paymentAdminRoutes from './payments.js';
 
 const router = SafeRouter();
@@ -45,6 +46,7 @@ router.get('/bootstrap', async (_req, res) => res.json({ needsSetup: (await admi
 
 router.use(requireAdmin('viewer'));
 router.use(playerRoutes);
+router.use(referralAdminRoutes);
 router.use(paymentAdminRoutes);
 
 router.get('/me', (req, res) => res.json({

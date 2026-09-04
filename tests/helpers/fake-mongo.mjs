@@ -16,6 +16,12 @@ const matches = (doc, filter) => Object.entries(filter).every(([key, cond]) => {
   if (key === '$nor') return !cond.some(c => matches(doc, c));
 
   const v = doc[key];
+  /* A bare RegExp is a field condition in its own right — `{ name: /anita/i }`
+     — and has to be caught before the operator loop below. A RegExp has no own
+     enumerable properties, so falling through to `Object.entries(cond).every()`
+     matched *every* document: an admin search test would pass whether or not
+     the route filtered anything at all. */
+  if (cond instanceof RegExp) return typeof v === 'string' && cond.test(v);
   if (cond === null || typeof cond !== 'object' || Array.isArray(cond)) return v === cond;
   return Object.entries(cond).every(([op, operand]) => {
     switch (op) {

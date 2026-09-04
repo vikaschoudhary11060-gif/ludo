@@ -16,17 +16,25 @@
               <span class="text-meta font-normal opacity-90">Fastest</span>
             </span>
           </button>
-          <a class="btn btn-block !justify-start gap-3 !bg-tg !text-white hover:!bg-[#0072ab]"
-             href="#" rel="noopener">
-            <span aria-hidden="true">&#9992;</span> Open Telegram
-          </a>
-          <a class="btn btn-block !justify-start gap-3 !bg-wa !text-white hover:!bg-[#1faa52]"
-             href="#" rel="noopener">
-            <span aria-hidden="true">&#128241;</span> Chat on WhatsApp
-          </a>
+          <!-- These were dead Telegram / WhatsApp placeholders. Every "talk to
+               us" route now lands in the same live chat thread, so support has
+               one inbox and a player never waits on a channel nobody watches.
+               Labelled by what they are for rather than by an app we do not
+               run, because a WhatsApp mark on a button that opens an in-app
+               sheet promises a channel that does not exist. -->
+          <button class="btn btn-block !justify-start gap-3 !bg-tg !text-white hover:!bg-[#0072ab]"
+                  type="button" data-modal-open="chat-sheet">
+            <span aria-hidden="true">&#128176;</span> Deposit or withdrawal help
+            <span class="ml-auto text-meta font-normal opacity-90">Live chat</span>
+          </button>
+          <button class="btn btn-block !justify-start gap-3 !bg-wa !text-white hover:!bg-[#1faa52]"
+                  type="button" data-modal-open="chat-sheet">
+            <span aria-hidden="true">&#127918;</span> Problem with a game or result
+            <span class="ml-auto text-meta font-normal opacity-90">Live chat</span>
+          </button>
         </div>
         <p class="mt-3 text-meta text-muted">
-          Buttons are placeholders &mdash; drop in your real Telegram and WhatsApp links.
+          All three open the same conversation with our team. Prefer email? Use the form below.
         </p>
       </section>
 

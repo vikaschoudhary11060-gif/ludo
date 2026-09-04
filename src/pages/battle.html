@@ -4,6 +4,50 @@
         </a>
       </section>
 
+      <!-- Loading skeleton.
+
+           /battles/:id is a round trip to the API, and on a cold host that is
+           seconds — during which this page used to render nothing at all below
+           the back link. The bars mirror the real layout (players card, status
+           pill, room panel, action block) so the screen does not jump when the
+           data lands. Removed by load(), win or lose. -->
+      <div id="battle-skeleton" class="section !pt-0">
+        <p class="sr-only" role="status">Loading battle details&hellip;</p>
+        <div aria-hidden="true">
+          <div class="rounded-card border border-line bg-surface p-4">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex flex-1 flex-col items-center gap-1.5">
+                <div class="skeleton h-12 w-12 rounded-full"></div>
+                <div class="skeleton h-3.5 w-20"></div>
+                <div class="skeleton h-2.5 w-14"></div>
+              </div>
+              <div class="flex flex-col items-center gap-2">
+                <div class="skeleton h-7 w-10"></div>
+                <div class="skeleton h-7 w-24 rounded-full"></div>
+              </div>
+              <div class="flex flex-1 flex-col items-center gap-1.5">
+                <div class="skeleton h-12 w-12 rounded-full"></div>
+                <div class="skeleton h-3.5 w-20"></div>
+                <div class="skeleton h-2.5 w-14"></div>
+              </div>
+            </div>
+            <div class="skeleton mt-4 h-9 w-full rounded-tile"></div>
+          </div>
+
+          <div class="skeleton mt-4 h-11 w-full rounded-tile"></div>
+
+          <div class="mt-7 space-y-3">
+            <div class="skeleton h-4 w-28"></div>
+            <div class="skeleton h-[104px] w-full rounded-card"></div>
+          </div>
+
+          <div class="mt-7 space-y-3">
+            <div class="skeleton h-4 w-44"></div>
+            <div class="skeleton h-[92px] w-full rounded-card"></div>
+          </div>
+        </div>
+      </div>
+
       <div id="battle-view" hidden>
         <!-- Players -->
         <section class="section !pt-0">

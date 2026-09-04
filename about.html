@@ -42,7 +42,7 @@
 <link rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Saira+Semi+Condensed:wght@600;700&display=swap">
 <link rel="stylesheet" href="assets/css/app.css">
-<script>window.KHELBRO_API = "https://ludo-qu3q.onrender.com"; window.KHELBRO_BUILD = "edd215725c91";
+<script>window.KHELBRO_API = "https://ludo-qu3q.onrender.com"; window.KHELBRO_BUILD = "e653cec05688";
 // Runs before paint so the theme never flashes.
 (function(){try{var t=localStorage.getItem('khelbro.theme')||
 (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
@@ -183,11 +183,15 @@ var l=localStorage.getItem('khelbro.lang');if(l)document.documentElement.lang=l;
       <div class="divider-x"></div>
       <section class="section">
         <h2 class="section-title">Contact</h2>
-        <p class="mt-2 text-body leading-relaxed text-ink">Reach the team any time through the Support page.</p>
+        <p class="mt-2 text-body leading-relaxed text-ink">
+          Reach the team any time on
+          <a class="text-brand underline" href="support.html?chat=1">live chat</a> &mdash;
+          the same conversation, whichever way you come in.
+        </p>
       </section>
       <div class="divider-x"></div>
       <section class="section">
-        <p class="text-meta text-muted">Questions about this page? <a class="text-brand underline" href="support.html">Contact support</a>.</p>
+        <p class="text-meta text-muted">Questions about this page? <a class="text-brand underline" href="support.html?chat=1">Contact support</a>.</p>
       </section>
 
     </main>
@@ -209,7 +213,7 @@ var l=localStorage.getItem('khelbro.lang');if(l)document.documentElement.lang=l;
           <a class="link-muted" href="refund-policy.html">Refund Policy</a>
           <a class="link-muted" href="responsible-gaming.html">Responsible Gaming</a>
           <a class="link-muted" href="about.html">About Us</a>
-          <a class="link-muted" href="support.html">Contact Us</a>
+          <a class="link-muted" href="support.html?chat=1">Contact Us</a>
         </div>
       </details>
 
@@ -220,9 +224,14 @@ var l=localStorage.getItem('khelbro.lang');if(l)document.documentElement.lang=l;
       <p class="mt-3 text-meta text-muted">&copy; <span data-year>2026</span> Khelbro. All rights reserved.</p>
     </footer>
 
-    <a class="fab-wa" href="support.html" aria-label="Contact support">
+    <!-- The floating support button. It opens OUR live chat, not WhatsApp, so
+         it carries a chat-bubble mark rather than WhatsApp's — a green circle
+         with their glyph on it promises a channel we do not answer. `?chat=1`
+         makes support.html open the chat sheet on arrival; on the support page
+         itself support.js intercepts the click and opens it without a reload. -->
+    <a class="fab-wa" href="support.html?chat=1" id="fab-support" aria-label="Live chat support">
       <svg class="h-7 w-7" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-        <path d="M12 2a10 10 0 0 0-8.7 15l-1.2 4.3 4.4-1.2A10 10 0 1 0 12 2zm0 2a8 8 0 1 1-4.2 14.8l-.4-.2-2.3.6.6-2.2-.3-.4A8 8 0 0 1 12 4zm-3.2 4c-.2 0-.5.1-.7.4-.3.3-.9.9-.9 2.1s.9 2.4 1 2.6c.1.2 1.7 2.7 4.2 3.7 2.1.8 2.5.7 3 .6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2l-.6-.3-1.5-.7c-.2-.1-.4-.1-.5.1l-.7.9c-.1.2-.3.2-.5.1a6.6 6.6 0 0 1-3.2-2.8c-.1-.2 0-.4.1-.5l.4-.5.3-.5v-.4l-.7-1.7c-.2-.4-.4-.4-.5-.4z"/>
+        <path d="M12 3c-4.97 0-9 3.36-9 7.5 0 2.3 1.25 4.36 3.2 5.73V21l3.2-1.9c.83.18 1.7.28 2.6.28 4.97 0 9-3.36 9-7.5S16.97 3 12 3zm-3.6 8.9a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zm3.6 0a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zm3.6 0a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6z"/>
       </svg>
     </a>
   </div>

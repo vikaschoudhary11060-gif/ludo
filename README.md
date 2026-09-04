@@ -156,6 +156,7 @@ console has an Audit log tab.
 | GET  | `/api/admin/battles?status=&range=&q=` | every game — open, waiting, running, completed, cancelled, disputed — with search |
 | GET  | `/api/admin/deposits/all?range=&status=` | UPI requests **and** instant top-ups |
 | GET  | `/api/admin/withdrawals?range=&status=` | every withdrawal request |
+| GET  | `/api/admin/referrals?range=&type=&q=&limit=` | every referral payout with both ends named; `type=split\|full` filters on whether the rate was halved |
 | POST | `/api/admin/withdrawals/:id` | `{ approve }` — paid, or rejected and refunded to winnings |
 | GET  | `/api/admin/disputes` | disputed battles with both claims and their screenshots |
 | POST | `/api/admin/disputes/:id/resolve` | `{ outcome: creator \| acceptor \| refund }` |
@@ -168,6 +169,11 @@ All list endpoints accept `range=1d|7d|30d|all` (default `all`).
 
 Open `admin.html` in a browser and paste the key. It is not linked from the site and
 carries `noindex`. Tabs: **Overview** (stat cards, games-by-status, money in/out),
+**Players** (search, then a full 360 on one player: wallet buckets, KYC and legal
+name, every UPI ID and bank account they have ever withdrawn to, deposits,
+withdrawals, referral position in both directions, match history, ledger and
+logins), **Referrals** (every referral payout, who was paid, whose game paid it,
+and which were halved because both players were referred),
 **Games** (all statuses, search by player/id/room code, expandable claims with evidence),
 **Disputes**, **Deposits**, **Withdrawals**, **KYC**, **Settings**. A time-range switch
 and an auto-refresh toggle apply across every tab, and the tab badges show what is
@@ -205,7 +211,13 @@ as `pending`. An admin then either **marks it paid** (ledger entry flips to `suc
 - Winner receives `round(stake × (2 − rate))` — the commission is charged on **one**
   player's stake, not on the pot. Default tiers: 8% up to ₹500 (inclusive), 5% above it.
   A ₹500 v ₹500 battle takes ₹40 and pays the winner ₹960.
-- Referrers earn 2% of each settled battle stake.
+- Referrers earn `referral_rate` (default 1%, set in Admin → Settings) of each
+  settled battle stake. **When both players in a battle were referred, each
+  referrer earns half that rate** — 0.5% each at the default — so one game never
+  costs the house more than one full rate however many referrers it touches.
+  Every payout is written to `referral_earnings` as its own row (referrer,
+  referee, battle, stake, rate applied, whether it was halved), which is what
+  the admin console's **Referrals** tab reads.
 - Every balance change is wrapped in a SQLite transaction and written to `transactions`.
 
 ### Result settlement
@@ -308,7 +320,9 @@ the brand panel on desktop. Specifically for touch:
 - **Busy buttons** — every async action swaps to a spinner and locks, so a slow connection
   never looks like a dead tap (`Khelbro.busy(btn, label, fn)`).
 - **Toasts** on success, error, copy, offline and reconnect (`Khelbro.toast`).
-- **Skeletons** on every page that fetches before it can render.
+- **Skeletons** on every page that fetches before it can render, including the
+  bet detail screen and the waiting room — both used to show an empty page (or
+  a ₹0 stake) until the API answered.
 - **Safe-area padding** for the iOS home indicator.
 - Offline/online detection with a toast and an automatic refresh on reconnect.
 
@@ -336,6 +350,15 @@ typing indicators, photo attachments, and an agent-online indicator driven by wh
 admin socket is connected. Socket.IO events: `chat:join`, `chat:message`, `chat:typing`,
 `chat:activity`, `chat:admin-online`, `chat:status`. Agent replies also fire a push
 notification, so a player gets it with the app closed.
+
+Every "talk to us" route lands in this one thread. The floating support button on
+every page, the three buttons under **Talk to us** on the support page, "Contact
+Us" in the footer and the contact links on the About page all open the same live
+chat — `support.html?chat=1` opens the sheet on arrival, and on the support page
+itself the floating button opens it without a reload. The floating button carries
+a chat-bubble mark rather than WhatsApp's, because it opens our chat and not
+WhatsApp. (The WhatsApp button on **Refer & Earn** is a share sheet for a
+referral link, not a support channel, and is unchanged.)
 
 **Not yet wired**
 - **No payment gateway.** `POST /wallet/deposit` credits instantly with no PSP. The manual

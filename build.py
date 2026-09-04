@@ -76,7 +76,7 @@ DRAWER_LINKS = [
 
 LEGAL = [('Terms & Conditions','terms.html'),('Privacy Policy','privacy.html'),
          ('Refund Policy','refund-policy.html'),('Responsible Gaming','responsible-gaming.html'),
-         ('About Us','about.html'),('Contact Us','support.html')]
+         ('About Us','about.html'),('Contact Us','support.html?chat=1')]
 
 
 def header():
@@ -284,9 +284,14 @@ var l=localStorage.getItem('khelbro.lang');if(l)document.documentElement.lang=l;
 
     {footer}
 
-    <a class="fab-wa" href="support.html" aria-label="Contact support">
+    <!-- The floating support button. It opens OUR live chat, not WhatsApp, so
+         it carries a chat-bubble mark rather than WhatsApp's — a green circle
+         with their glyph on it promises a channel we do not answer. `?chat=1`
+         makes support.html open the chat sheet on arrival; on the support page
+         itself support.js intercepts the click and opens it without a reload. -->
+    <a class="fab-wa" href="support.html?chat=1" id="fab-support" aria-label="Live chat support">
       <svg class="h-7 w-7" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-        <path d="M12 2a10 10 0 0 0-8.7 15l-1.2 4.3 4.4-1.2A10 10 0 1 0 12 2zm0 2a8 8 0 1 1-4.2 14.8l-.4-.2-2.3.6.6-2.2-.3-.4A8 8 0 0 1 12 4zm-3.2 4c-.2 0-.5.1-.7.4-.3.3-.9.9-.9 2.1s.9 2.4 1 2.6c.1.2 1.7 2.7 4.2 3.7 2.1.8 2.5.7 3 .6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2l-.6-.3-1.5-.7c-.2-.1-.4-.1-.5.1l-.7.9c-.1.2-.3.2-.5.1a6.6 6.6 0 0 1-3.2-2.8c-.1-.2 0-.4.1-.5l.4-.5.3-.5v-.4l-.7-1.7c-.2-.4-.4-.4-.5-.4z"/>
+        <path d="M12 3c-4.97 0-9 3.36-9 7.5 0 2.3 1.25 4.36 3.2 5.73V21l3.2-1.9c.83.18 1.7.28 2.6.28 4.97 0 9-3.36 9-7.5S16.97 3 12 3zm-3.6 8.9a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zm3.6 0a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zm3.6 0a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6z"/>
       </svg>
     </a>
   </div>

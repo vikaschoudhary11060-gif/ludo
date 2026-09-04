@@ -9,6 +9,7 @@ import { col, nextId, now, audit, notify, withTransaction } from '../lib/db.js';
 import { requireAdmin } from '../lib/admin-auth.js';
 import { memoryStorage, ALLOWED_TYPES, saveFile } from '../lib/storage.js';
 import { NOT_BOT } from '../lib/bots.js';
+import { SIGNUP_BONUS_LABEL, REFERRAL_BONUS_LABEL, BONUS_LABEL } from '../lib/config.js';
 
 const qrUpload = multer({
   storage: memoryStorage,
@@ -106,14 +107,168 @@ router.get('/players/:id', async (req, res) => {
   const watch = await col('watchlist').findOne({ user_id: id }, { projection: { _id: 0 } });
   const thread = await col('chat_threads').findOne({ user_id: id }, { projection: { _id: 0, id: 1, status: 1, unread_admin: 1 } });
 
+  /* ---------- payout identity, money in, money out ----------
+
+     A support agent looking at a player needs the same three answers every
+     time: where their money goes, what has come in, and what has gone out.
+     Those live in three different collections, so gather them here rather
+     than making the console stitch four more calls together. */
+  const [deposits, withdrawals, kycDocs] = await Promise.all([
+    col('deposit_requests').find({ user_id: id }, { projection: { _id: 0 } })
+      .sort({ created_at: -1 }).limit(50).toArray(),
+    col('withdrawal_requests').find({ user_id: id }, { projection: { _id: 0 } })
+      .sort({ created_at: -1 }).limit(50).toArray(),
+    col('kyc_documents').find({ user_id: id }, { projection: { _id: 0, slot: 1, path: 1, created_at: 1 } }).toArray(),
+  ]);
+
+  /* Every payout destination this player has ever used, newest first and
+     de-duplicated. A UPI ID is not stored on the account — it is typed per
+     withdrawal — so the account's "UPI ID" is really the set of them, and an
+     agent chasing a failed payout needs to see all of them, not the latest.
+     `verified` marks a destination that has actually been paid out to. */
+  const payoutMethods = [];
+  const seenKey = new Set();
+  for (const r of withdrawals) {
+    const key = r.method === 'bank'
+      ? `bank:${r.account_number || ''}:${r.ifsc || ''}`
+      : `upi:${(r.upi_id || '').toLowerCase()}`;
+    if (key === 'upi:' || key === 'bank::') continue;      // nothing recorded on this row
+    const paid = r.status === 'paid';
+    const seen = seenKey.has(key);
+    if (seen) {
+      const existing = payoutMethods.find(m => m.key === key);
+      existing.used += 1;
+      existing.paidOut += paid ? (r.amount || 0) : 0;
+      existing.verified = existing.verified || paid;
+      continue;
+    }
+    seenKey.add(key);
+    payoutMethods.push({
+      key, method: r.method || 'upi',
+      upiId: r.upi_id || null,
+      accountName: r.account_name || null,
+      accountNumber: r.account_number || null,
+      ifsc: r.ifsc || null,
+      lastUsedAt: r.created_at,
+      used: 1,
+      paidOut: paid ? (r.amount || 0) : 0,
+      verified: paid,
+    });
+  }
+
+  const totalOf = (rows, status) => rows.filter(r => r.status === status)
+    .reduce((n, r) => n + (Number(r.amount) || 0), 0);
+
+  /* Staked and won come off the battles themselves rather than the ledger:
+     a stake debit is split across two buckets and a payout is one credit, so
+     counting ledger rows would double the first and miss cancelled games. */
+  const stakedAgg = await col('battles').aggregate([
+    { $match: { $or: [{ creator_id: id }, { acceptor_id: id }], status: 'completed' } },
+    { $group: { _id: null, staked: { $sum: '$amount' }, n: { $sum: 1 } } },
+  ]).toArray();
+  const wonAgg = await col('battles').aggregate([
+    { $match: { winner_id: id, status: 'completed' } },
+    { $group: { _id: null, payout: { $sum: '$payout' }, staked: { $sum: '$amount' }, n: { $sum: 1 } } },
+  ]).toArray();
+  /* Joining credits only. Matching the exact labels rather than "every
+     deposit-bucket credit with no battle attached" — that also catches the
+     verified-deposit credit, which would report a player's own money back to
+     the operator as a bonus the house gave away. */
+  const bonusAgg = await col('transactions').aggregate([
+    { $match: { user_id: id, type: 'credit', bucket: 'deposit',
+      note: { $in: [SIGNUP_BONUS_LABEL, REFERRAL_BONUS_LABEL, BONUS_LABEL] } } },
+    { $group: { _id: null, v: { $sum: '$amount' } } },
+  ]).toArray();
+
+  const staked = stakedAgg[0]?.staked || 0;
+  const wonPayout = wonAgg[0]?.payout || 0;
+  const wonStake = wonAgg[0]?.staked || 0;
+  const lostStake = Math.max(0, staked - wonStake);
+
+  /* ---------- referral position, both directions ---------- */
+  const referrer = u.referred_by != null
+    ? await col('users').findOne({ id: u.referred_by },
+        { projection: { _id: 0, id: 1, name: 1, phone: 1, referral_code: 1 } })
+    : null;
+
+  const referredRows = await col('referrals').find({ referrer_id: id }, { projection: { _id: 0 } })
+    .sort({ created_at: -1 }).limit(100).toArray();
+  const refereeIds = referredRows.map(r => r.referee_id);
+  const refereeUsers = refereeIds.length
+    ? await col('users').find({ id: { $in: refereeIds } },
+        { projection: { _id: 0, id: 1, name: 1, phone: 1, created_at: 1, kyc_status: 1, banned: 1 } }).toArray()
+    : [];
+  const refereeById = Object.fromEntries(refereeUsers.map(r => [r.id, r]));
+
+  /* Every referral transfer this player has been paid, and every one their
+     own referrer was paid because of them. Two directions, one collection. */
+  const [earnedTransfers, generatedTransfers] = await Promise.all([
+    col('referral_earnings').find({ referrer_id: id }, { projection: { _id: 0 } })
+      .sort({ created_at: -1 }).limit(100).toArray(),
+    col('referral_earnings').find({ referee_id: id }, { projection: { _id: 0 } })
+      .sort({ created_at: -1 }).limit(100).toArray(),
+  ]);
+
+  const nameFor = uid => refereeById[uid]?.name
+    || (uid === id ? u.name : null)
+    || (uid === referrer?.id ? referrer.name : null)
+    || (uid != null ? 'Player' + String(uid).slice(-4) : '—');
+
   res.json({
-    player: { id: u.id, name: u.name, phone: u.phone, email: u.email, avatar: u.avatar,
-      kyc: u.kyc_status, kycMasked: u.kyc_masked, banned: !!u.banned,
+    player: { id: u.id, name: u.name, phone: u.phone, email: u.email,
+      emailVerified: !!u.email_verified, avatar: u.avatar, avatarUrl: u.avatar_url,
+      kyc: u.kyc_status, kycMethod: u.kyc_method, kycMasked: u.kyc_masked,
+      kycDob: u.kyc_dob || null, legalName: u.legal_name || null,
+      banned: !!u.banned,
       referralCode: u.referral_code, referredBy: u.referred_by, createdAt: u.created_at },
-    wallet: { deposit: w.deposit, winnings: w.winnings, referral: w.referral, total: w.deposit + w.winnings },
+    wallet: { deposit: w.deposit, winnings: w.winnings, referral: w.referral,
+      total: w.deposit + w.winnings, grand: w.deposit + w.winnings + (w.referral || 0) },
     stats: { played, won, winRate: settled ? Math.round((won / settled) * 100) : 0,
       deposited: depAgg[0]?.v || 0, withdrawn: wdAgg[0]?.v || 0,
-      referrals: refAgg[0]?.c || 0, referralEarned: refAgg[0]?.earned || 0 },
+      referrals: refAgg[0]?.c || 0, referralEarned: refAgg[0]?.earned || 0,
+      // Money that actually cleared, as opposed to every row ever written.
+      depositApproved: totalOf(deposits, 'approved'),
+      depositPending: totalOf(deposits, 'pending'),
+      depositRejected: totalOf(deposits, 'rejected'),
+      withdrawPaid: totalOf(withdrawals, 'paid'),
+      withdrawPending: totalOf(withdrawals, 'pending'),
+      withdrawRejected: totalOf(withdrawals, 'rejected'),
+      staked, wonPayout, lostStake,
+      /* The player's own position across settled games: everything they were
+         paid, less everything they staked. Negative means the house is up on
+         them — which is the number an operator is actually looking for when
+         a large withdrawal lands. */
+      netProfit: wonPayout - staked,
+      bonuses: bonusAgg[0]?.v || 0,
+    },
+    payoutMethods,
+    deposits, withdrawals,
+    kycDocuments: kycDocs,
+    referral: {
+      code: u.referral_code,
+      referredBy: referrer ? { id: referrer.id, name: referrer.name, phone: referrer.phone, code: referrer.referral_code } : null,
+      referredUsers: referredRows.map(r => ({
+        id: r.referee_id,
+        name: refereeById[r.referee_id]?.name || 'Player' + String(r.referee_id).slice(-4),
+        phone: refereeById[r.referee_id]?.phone || '',
+        kyc: refereeById[r.referee_id]?.kyc_status || 'none',
+        banned: !!refereeById[r.referee_id]?.banned,
+        joinedAt: refereeById[r.referee_id]?.created_at || r.created_at,
+        earned: r.earned || 0,
+      })),
+      earnedTransfers: earnedTransfers.map(t => ({
+        id: t.id, amount: t.amount, stake: t.stake, split: !!t.split,
+        ratePercent: +((t.rate || 0) * 100).toFixed(3),
+        battleId: t.battle_id, mode: t.mode, source: t.source, createdAt: t.created_at,
+        counterparty: nameFor(t.referee_id), counterpartyId: t.referee_id,
+      })),
+      generatedTransfers: generatedTransfers.map(t => ({
+        id: t.id, amount: t.amount, stake: t.stake, split: !!t.split,
+        ratePercent: +((t.rate || 0) * 100).toFixed(3),
+        battleId: t.battle_id, mode: t.mode, source: t.source, createdAt: t.created_at,
+        counterparty: nameFor(t.referrer_id), counterpartyId: t.referrer_id,
+      })),
+    },
     recentTx, recentGames: gamesWithDetails, devices, watch: watch || null, thread: thread || null,
   });
 });

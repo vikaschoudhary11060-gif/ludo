@@ -433,11 +433,26 @@
   }
 
   async function openPlayer(id) {
+    /* The detail panel lives inside the Players section, so opening a player
+       from anywhere else — a name in the referral payouts table, a row in the
+       risk lists — has to bring that section forward first. Without this the
+       card renders correctly into a hidden <section> and the click looks dead.
+
+       The tab is switched by hand rather than through switchTab(), because
+       that repaints the section with the player list the moment we are about
+       to replace it. */
+    if (tab !== 'players') {
+      tab = 'players';
+      $$('[data-tab]').forEach(b => b.classList.toggle('is-active', b.dataset.tab === 'players'));
+      const m = $('#m-tab'); if (m) m.value = 'players';
+      Object.keys(TABS).forEach(t => { $('#tab-' + t).hidden = t !== 'players'; });
+    }
+    $('#player-detail').innerHTML = skeleton(5);
+    $('#players').hidden = true;
+    $('#player-detail').hidden = false;
     const d = await call('/admin/players/' + id);
     const p = d.player, w = d.wallet, st = d.stats;
-    $('#players').hidden = true;
     const det = $('#player-detail');
-    det.hidden = false;
     det.innerHTML = `
       <button class="link-muted mb-3 inline-flex items-center gap-1" type="button" id="player-back">‹ Back to players</button>
       <div class="rounded-card border border-line bg-surface p-4">
@@ -454,11 +469,37 @@
           <div class="rounded-tile bg-surface-page p-2"><p class="pill-label text-cta">Winnings</p><p class="font-bold text-cta">${money(w.winnings)}</p></div>
           <div class="rounded-tile bg-surface-page p-2"><p class="pill-label">Referral</p><p class="font-bold text-ink">${money(w.referral)}</p></div>
         </div>
-        <div class="mt-3 grid grid-cols-4 gap-2 text-center text-meta text-muted">
+        <div class="mt-3 grid grid-cols-3 gap-2 text-center text-meta text-muted sm:grid-cols-6">
           <div><span class="block font-bold text-ink">${st.played}</span>played</div>
           <div><span class="block font-bold text-ink">${st.won}</span>won</div>
           <div><span class="block font-bold text-ink">${st.winRate}%</span>win rate</div>
-          <div><span class="block font-bold text-ink">${money(st.deposited)}</span>deposited</div>
+          <div><span class="block font-bold text-ink">${money(st.staked)}</span>staked</div>
+          <div><span class="block font-bold text-cta">${money(st.wonPayout)}</span>won back</div>
+          <div><span class="block font-bold ${st.netProfit >= 0 ? 'text-cta' : 'text-live'}">${st.netProfit >= 0 ? '+' : '−'}${money(Math.abs(st.netProfit))}</span>player net</div>
+        </div>
+
+        <!-- Identity, so an agent chasing a payout is not guessing who this is. -->
+        <div class="mt-3 grid gap-1.5 rounded-tile bg-surface-page p-3 text-meta sm:grid-cols-2">
+          <div><span class="text-muted">KYC status</span>
+            <span class="ml-1.5">${pill(p.kyc || 'none')}</span>
+            ${p.kycMethod ? `<span class="ml-1 text-muted">via ${esc(p.kycMethod)}</span>` : ''}</div>
+          <div><span class="text-muted">Legal name</span>
+            <span class="ml-1.5 font-bold text-ink">${esc(p.legalName || '—')}</span></div>
+          <div><span class="text-muted">Aadhaar / doc</span>
+            <span class="ml-1.5 font-mono text-ink">${esc(p.kycMasked || '—')}</span>
+            ${p.kycDob ? `<span class="ml-1 text-muted">DOB ${esc(p.kycDob)}</span>` : ''}</div>
+          <div><span class="text-muted">Email</span>
+            <span class="ml-1.5 text-ink">${esc(p.email || '—')}</span>
+            ${p.email ? (p.emailVerified ? '<span class="ml-1 text-cta">verified</span>' : '<span class="ml-1 text-live">unverified</span>') : ''}</div>
+          <div><span class="text-muted">Referral code</span>
+            <span class="ml-1.5 font-mono font-bold text-brand">${esc(p.referralCode || '—')}</span></div>
+          <div><span class="text-muted">Joining bonuses</span>
+            <span class="ml-1.5 font-bold text-ink">${money(st.bonuses)}</span></div>
+          ${d.kycDocuments && d.kycDocuments.length ? `<div class="sm:col-span-2 flex flex-wrap items-center gap-2 pt-1">
+            <span class="text-muted">Documents</span>
+            ${d.kycDocuments.map(doc => `<span class="inline-flex flex-col items-center gap-0.5">
+              ${shot(doc.path)}<span class="text-[10px] uppercase text-muted">${esc(doc.slot)}</span></span>`).join('')}
+          </div>` : ''}
         </div>
         <div class="mt-4 flex flex-wrap gap-2" data-min-role="admin">
           <button class="btn btn-outline !min-h-[34px] !px-3 !text-meta" data-padjust="${p.id}">Adjust wallet</button>
@@ -467,6 +508,138 @@
           <button class="btn btn-outline !min-h-[34px] !px-3 !text-meta" data-pwatch="${p.id}" data-on="${d.watch?0:1}">${d.watch?'Unwatch':'Watch'}</button>
           <button class="btn btn-outline !min-h-[34px] !px-3 !text-meta !text-live" data-pban="${p.id}" data-on="${p.banned?0:1}">${p.banned?'Unban':'Ban'}</button>
         </div>
+      </div>
+
+      <!-- ---------- Money in, money out, and where it goes ---------- -->
+      <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="rounded-card border border-line bg-surface p-3">
+          <p class="pill-label">Deposited</p>
+          <p class="mt-0.5 text-title font-bold text-ink">${money(st.depositApproved)}</p>
+          <p class="text-meta text-muted">${st.depositPending ? money(st.depositPending) + ' awaiting approval' : 'nothing pending'}</p>
+        </div>
+        <div class="rounded-card border border-line bg-surface p-3">
+          <p class="pill-label">Withdrawn</p>
+          <p class="mt-0.5 text-title font-bold text-ink">${money(st.withdrawPaid)}</p>
+          <p class="text-meta ${st.withdrawPending ? 'text-gold-deep' : 'text-muted'}">${st.withdrawPending ? money(st.withdrawPending) + ' pending payout' : 'nothing pending'}</p>
+        </div>
+        <div class="rounded-card border border-line bg-surface p-3">
+          <p class="pill-label">Referral earned</p>
+          <p class="mt-0.5 text-title font-bold text-ink">${money(st.referralEarned)}</p>
+          <p class="text-meta text-muted">${st.referrals} player${st.referrals === 1 ? '' : 's'} referred</p>
+        </div>
+        <div class="rounded-card border border-line bg-surface p-3">
+          <p class="pill-label">Balance held</p>
+          <p class="mt-0.5 text-title font-bold text-ink">${money(w.grand)}</p>
+          <p class="text-meta text-muted">incl. ${money(w.referral)} unredeemed referral</p>
+        </div>
+      </div>
+
+      <!-- Payout destinations. A UPI ID is typed per withdrawal rather than
+           stored on the account, so the account's "UPI ID" is the set of them. -->
+      <div class="mt-3 rounded-card border border-line bg-surface p-4">
+        <p class="mb-2.5 text-body font-bold text-ink">Payout destinations (${d.payoutMethods.length})</p>
+        ${d.payoutMethods.length ? `<div class="grid gap-2 sm:grid-cols-2">
+          ${d.payoutMethods.map(m => `<div class="rounded-tile border border-line bg-surface-page p-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <p class="text-[10px] uppercase tracking-wide text-muted">${m.method === 'bank' ? 'Bank account' : 'UPI ID'}</p>
+                <p class="truncate font-mono text-body-sm font-bold text-ink">${esc(m.method === 'bank' ? (m.accountNumber || '—') : (m.upiId || '—'))}</p>
+                ${m.method === 'bank' ? `<p class="truncate text-meta text-muted">${esc(m.accountName || '')}${m.ifsc ? ' · ' + esc(m.ifsc) : ''}</p>` : ''}
+              </div>
+              ${m.verified ? '<span class="shrink-0 rounded-full bg-cta/15 px-2 py-0.5 text-[10px] font-bold uppercase text-cta">paid out</span>'
+                           : '<span class="shrink-0 rounded-full bg-surface px-2 py-0.5 text-[10px] font-bold uppercase text-muted">unused</span>'}
+            </div>
+            <p class="mt-1.5 text-meta text-muted">${m.used} request${m.used === 1 ? '' : 's'} · ${money(m.paidOut)} paid · last ${when(m.lastUsedAt)}</p>
+          </div>`).join('')}
+        </div>` : '<p class="text-meta text-muted">No withdrawal has been requested, so no UPI ID or bank account is on file yet.</p>'}
+      </div>
+
+      <div class="mt-3 grid gap-3 lg:grid-cols-2">
+        <div class="rounded-card border border-line bg-surface p-4">
+          <p class="mb-2.5 text-body font-bold text-ink">Deposits (${d.deposits.length})</p>
+          ${d.deposits.length ? `<div class="overflow-x-auto"><table class="rtable w-full border-collapse text-body-sm">
+            <thead><tr class="bg-accent-head text-left text-brand-dark">
+              <th class="px-2.5 py-2 font-bold">Amount</th><th class="px-2.5 py-2 font-bold">UTR</th>
+              <th class="px-2.5 py-2 font-bold">Via</th><th class="px-2.5 py-2 font-bold">Status</th>
+              <th class="px-2.5 py-2 font-bold">When</th></tr></thead>
+            <tbody class="divide-y divide-line">
+              ${d.deposits.map(r => `<tr>
+                <td data-label="Amount" class="px-2.5 py-2 font-black text-ink">${money(r.amount)}</td>
+                <td data-label="UTR" class="px-2.5 py-2 font-mono text-[11px] text-muted">${esc(r.utr || '—')}</td>
+                <td data-label="Via" class="px-2.5 py-2 text-[11px] uppercase text-muted">${esc(r.method || 'upi')}</td>
+                <td data-label="Status" class="px-2.5 py-2">${pill(r.status)}</td>
+                <td data-label="When" class="px-2.5 py-2 text-[11px] text-muted">${when(r.created_at)}</td>
+              </tr>`).join('')}
+            </tbody></table></div>` : '<p class="text-meta text-muted">No deposit requests.</p>'}
+        </div>
+
+        <div class="rounded-card border border-line bg-surface p-4">
+          <p class="mb-2.5 text-body font-bold text-ink">Withdrawals (${d.withdrawals.length})</p>
+          ${d.withdrawals.length ? `<div class="overflow-x-auto"><table class="rtable w-full border-collapse text-body-sm">
+            <thead><tr class="bg-accent-head text-left text-brand-dark">
+              <th class="px-2.5 py-2 font-bold">Amount</th><th class="px-2.5 py-2 font-bold">Sent to</th>
+              <th class="px-2.5 py-2 font-bold">Status</th><th class="px-2.5 py-2 font-bold">When</th></tr></thead>
+            <tbody class="divide-y divide-line">
+              ${d.withdrawals.map(r => `<tr>
+                <td data-label="Amount" class="px-2.5 py-2 font-black text-ink">${money(r.amount)}</td>
+                <td data-label="Sent to" class="px-2.5 py-2 font-mono text-[11px] text-muted">${esc(r.method === 'bank' ? `${r.account_number || ''} ${r.ifsc || ''}`.trim() : (r.upi_id || '—'))}</td>
+                <td data-label="Status" class="px-2.5 py-2">${pill(r.status)}</td>
+                <td data-label="When" class="px-2.5 py-2 text-[11px] text-muted">${when(r.created_at)}</td>
+              </tr>`).join('')}
+            </tbody></table></div>` : '<p class="text-meta text-muted">No withdrawal requests.</p>'}
+        </div>
+      </div>
+
+      <!-- ---------- Referral position, both directions ---------- -->
+      <div class="mt-3 rounded-card border border-line bg-surface p-4">
+        <div class="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+          <p class="text-body font-bold text-ink">Referrals</p>
+          <span class="text-meta text-muted">
+            ${d.referral.referredBy
+              ? `Joined through <button class="font-bold text-brand hover:underline" type="button" data-player="${d.referral.referredBy.id}">${esc(d.referral.referredBy.name)}</button>`
+              : 'Joined without a referral code'}</span>
+        </div>
+
+        <div class="grid gap-3 lg:grid-cols-2">
+          <div>
+            <p class="pill-label mb-1.5">Players they referred (${d.referral.referredUsers.length})</p>
+            ${d.referral.referredUsers.length ? `<div class="max-h-64 overflow-y-auto">
+              ${d.referral.referredUsers.map(r => `<div class="flex items-center justify-between gap-2 border-b border-line py-1.5 text-meta last:border-0">
+                <button class="min-w-0 flex-1 text-left" type="button" data-player="${r.id}">
+                  <span class="block truncate font-bold text-ink hover:underline">${esc(r.name)}${r.banned ? ' <span class="text-live">(banned)</span>' : ''}</span>
+                  <span class="block text-muted">${esc(r.phone)} · joined ${when(r.joinedAt)}</span>
+                </button>
+                <span class="shrink-0 font-bold text-cta">${money(r.earned)}</span>
+              </div>`).join('')}
+            </div>` : '<p class="text-meta text-muted">Nobody has signed up with their code.</p>'}
+          </div>
+
+          <div>
+            <p class="pill-label mb-1.5">Referral payouts received (${d.referral.earnedTransfers.length})</p>
+            ${d.referral.earnedTransfers.length ? `<div class="max-h-64 overflow-y-auto">
+              ${d.referral.earnedTransfers.map(t2 => `<div class="flex items-center justify-between gap-2 border-b border-line py-1.5 text-meta last:border-0">
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-ink">${esc(t2.counterparty)}&rsquo;s ${money(t2.stake)} game</span>
+                  <span class="block text-muted">${t2.ratePercent}%${t2.split ? ' · half rate (both referred)' : ''} · ${when(t2.createdAt)}</span>
+                </span>
+                <span class="shrink-0 font-bold text-cta">+${money(t2.amount)}</span>
+              </div>`).join('')}
+            </div>` : '<p class="text-meta text-muted">No referral payouts yet.</p>'}
+          </div>
+        </div>
+
+        ${d.referral.generatedTransfers.length ? `<div class="mt-3 border-t border-line pt-3">
+          <p class="pill-label mb-1.5">Paid to their referrer because of this player (${d.referral.generatedTransfers.length})</p>
+          <div class="max-h-48 overflow-y-auto">
+            ${d.referral.generatedTransfers.map(t2 => `<div class="flex items-center justify-between gap-2 border-b border-line py-1.5 text-meta last:border-0">
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-ink">${esc(t2.counterparty)} &larr; ${money(t2.stake)} game</span>
+                <span class="block text-muted">${t2.ratePercent}%${t2.split ? ' · half rate (both referred)' : ''} · ${when(t2.createdAt)}</span>
+              </span>
+              <span class="shrink-0 font-bold text-muted-dark">${money(t2.amount)}</span>
+            </div>`).join('')}
+          </div>
+        </div>` : ''}
       </div>
 
       <div class="mt-3 rounded-card border border-line bg-surface p-4">
@@ -541,6 +714,97 @@
         </div>
       </div>`;
     det.dataset.pid = id;
+  }
+
+  /* ---------------- referral payouts ---------------- */
+  /* Every rupee the referral programme has paid, with both ends of each
+     transfer. `refType` mirrors the sub-buttons: a payout is "split" when both
+     players in the battle had referrers, so each referrer took half the
+     configured rate. */
+  let refType = 'all';
+  let refQuery = '';
+
+  async function loadReferrals() {
+    $('#referrals').innerHTML = skeleton(4);
+    const d = await call('/admin/referrals' + q(
+      `&type=${refType}${refQuery ? '&q=' + encodeURIComponent(refQuery) : ''}`));
+    const t = d.totals;
+
+    const stat = (label, value, sub, tone = 'text-ink') => `
+      <div class="rounded-card border border-line bg-surface p-3.5">
+        <p class="pill-label">${label}</p>
+        <p class="mt-1 text-h3 font-bold ${tone}">${value}</p>
+        ${sub ? `<p class="mt-0.5 text-meta text-muted">${sub}</p>` : ''}
+      </div>`;
+
+    const rateNote = `Standard ${d.ratePercent}% of the bet · ${d.splitRatePercent}% each when both
+                      players were referred, so one game never costs more than ${d.ratePercent}%.`;
+
+    const head = `
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        ${stat('Referral paid out', money(t.amount), `${t.transfers} transfer${t.transfers === 1 ? '' : 's'}`, 'text-cta')}
+        ${stat('Half-rate payouts', money(t.splitAmount), `${t.splitTransfers} game${t.splitTransfers === 1 ? '' : 's'} with both players referred`)}
+        ${stat('Referrers paid', t.referrers, `across ${t.referees} referred player${t.referees === 1 ? '' : 's'}`)}
+        ${stat('Bets they came from', money(t.stake), 'total stake of the paying games')}
+      </div>
+      <p class="mt-2 rounded-tile bg-surface-page px-3 py-2 text-meta text-muted">${rateNote}</p>`;
+
+    const top = d.topReferrers.length ? `
+      <div class="mt-4 rounded-card border border-line bg-surface p-4">
+        <p class="mb-2.5 text-body font-bold text-ink">Top earning referrers</p>
+        <div class="grid gap-1.5 sm:grid-cols-2">
+          ${d.topReferrers.map((r, i) => `
+            <button class="flex items-center gap-2.5 rounded-tile border border-line bg-surface-page px-3 py-2 text-left transition hover:border-brand"
+                    type="button" data-player="${r.id}">
+              <span class="w-5 shrink-0 text-meta font-bold text-muted">${i + 1}</span>
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-body-sm font-bold text-ink">${esc(r.name)}</span>
+                <span class="block text-meta text-muted">${esc(r.phone)} · ${r.referees} player${r.referees === 1 ? '' : 's'} · ${r.transfers} payout${r.transfers === 1 ? '' : 's'}</span>
+              </span>
+              <span class="shrink-0 font-black text-cta">${money(r.amount)}</span>
+            </button>`).join('')}
+        </div>
+      </div>` : '';
+
+    if (!d.transfers.length) {
+      $('#referrals').innerHTML = head + top + '<div class="mt-4">' +
+        empty(refQuery ? 'No referral payouts match that search.'
+                       : 'No referral payouts in this range yet.') + '</div>';
+      return;
+    }
+
+    $('#referrals').innerHTML = head + top + `
+      <div class="mt-4 sm:overflow-x-auto sm:rounded-card sm:border sm:border-line sm:bg-surface">
+        <table class="rtable w-full border-collapse text-body-sm">
+          <thead><tr class="bg-accent-head text-left text-brand-dark">
+            <th class="px-3 py-2.5 font-bold">Referrer</th>
+            <th class="px-3 py-2.5 font-bold">Earned from</th>
+            <th class="px-3 py-2.5 font-bold">Bet</th>
+            <th class="px-3 py-2.5 font-bold">Rate</th>
+            <th class="px-3 py-2.5 font-bold">Paid</th>
+            <th class="px-3 py-2.5 font-bold">Game</th>
+            <th class="px-3 py-2.5 font-bold">When</th>
+          </tr></thead>
+          <tbody class="divide-y divide-line">
+            ${d.transfers.map(r => `<tr class="hover:bg-surface-page">
+              <td data-label="Referrer" class="px-3 py-2.5">
+                <button class="text-left font-bold text-brand hover:underline" type="button" data-player="${r.referrer.id}">${esc(r.referrer.name)}</button>
+                <span class="block text-meta text-muted">${esc(r.referrer.phone)}${r.referrer.code ? ' · ' + esc(r.referrer.code) : ''}</span></td>
+              <td data-label="Earned from" class="px-3 py-2.5">
+                <button class="text-left font-bold text-ink hover:underline" type="button" data-player="${r.referee.id}">${esc(r.referee.name)}</button>
+                <span class="block text-meta text-muted">${esc(r.referee.phone)}</span></td>
+              <td data-label="Bet" class="px-3 py-2.5 font-bold text-ink">${money(r.stake)}</td>
+              <td data-label="Rate" class="px-3 py-2.5">
+                <span class="font-bold text-ink">${r.ratePercent}%</span>
+                ${r.split ? '<span class="ml-1 rounded-full bg-gold/25 px-2 py-0.5 text-[10px] font-bold uppercase text-gold-deep" title="Both players in this game were referred, so each referrer took half the rate">half</span>' : ''}</td>
+              <td data-label="Paid" class="px-3 py-2.5 font-black text-cta">${money(r.amount)}</td>
+              <td data-label="Game" class="px-3 py-2.5">
+                <span class="font-mono text-[11px] text-muted">#${esc(String(r.battleId).slice(-6))}</span>
+                <span class="block text-[10px] uppercase text-muted">${esc(r.mode || '—')}${r.source === 'backfill' ? ' · imported' : ''}</span></td>
+              <td data-label="When" class="px-3 py-2.5 text-[11px] text-muted">${when(r.createdAt)}</td>
+            </tr>`).join('')}
+          </tbody></table></div>
+      ${d.truncated ? `<p class="mt-2 text-meta text-muted">Showing the ${d.limit} most recent payouts of ${t.transfers}. Narrow the range or search to see the rest.</p>` : ''}`;
   }
 
   /* ---------------- live chat ---------------- */
@@ -986,7 +1250,7 @@
   }
 
   const TABS = { overview: loadOverview, alerts: loadInbox, players: loadPlayers, games: loadGames, disputes: loadDisputes,
-                 deposits: loadDeposits, withdrawals: loadWithdrawals, kyc: loadKyc, risk: loadRisk,
+                 deposits: loadDeposits, withdrawals: loadWithdrawals, referrals: loadReferrals, kyc: loadKyc, risk: loadRisk,
                  chat: loadChat, audit: loadAudit, admins: loadAdmins, payments: loadPayments, settings: loadSettings };
 
   async function render() {
@@ -1336,6 +1600,10 @@
     const rv = t.closest('[data-risk]');
     if (rv) { riskView = rv.dataset.risk;
       $$('[data-risk]').forEach(b => b.classList.toggle('is-active', b === rv)); return loadRisk(); }
+
+    const rt = t.closest('[data-reftype]');
+    if (rt) { refType = rt.dataset.reftype;
+      $$('[data-reftype]').forEach(b => b.classList.toggle('is-active', b === rt)); return loadReferrals(); }
     const uw = t.closest('[data-unwatch]');
     if (uw) { try { await call(`/admin/players/${uw.dataset.unwatch}/watch`, { method: 'POST', body: JSON.stringify({ watch: false }) });
       toast('Removed from watchlist', 'success'); loadRisk(); } catch (err) { toast(err.message, 'error'); } return; }
@@ -1441,6 +1709,11 @@
   let searchTimer;
   document.addEventListener('input', e => {
     if (e.target.id === 'player-q') { clearTimeout(searchTimer); searchTimer = setTimeout(loadPlayers, 350); }
+    if (e.target.id === 'ref-q') {
+      clearTimeout(searchTimer);
+      refQuery = e.target.value.trim();
+      searchTimer = setTimeout(loadReferrals, 350);
+    }
     if (e.target.id === 'game-q') {
       clearTimeout(searchTimer);
       gameQuery = e.target.value.trim();

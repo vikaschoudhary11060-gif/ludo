@@ -100,6 +100,7 @@ document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
         <option value="disputes">Disputes</option>
         <option value="deposits">Deposits</option>
         <option value="withdrawals">Withdrawals</option>
+        <option value="referrals">Referral payouts</option>
         <option value="kyc">KYC</option>
         <option value="risk">Risk &amp; Fraud</option>
         <option value="payments">Payment methods</option>
@@ -118,6 +119,7 @@ document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
         <button class="chip" type="button" data-tab="disputes">Disputes <span class="tab-count" data-count="disputes"></span></button>
         <button class="chip" type="button" data-tab="deposits">Deposits <span class="tab-count" data-count="deposits"></span></button>
         <button class="chip" type="button" data-tab="withdrawals">Withdrawals <span class="tab-count" data-count="withdrawals"></span></button>
+        <button class="chip" type="button" data-tab="referrals">Referrals</button>
         <button class="chip" type="button" data-tab="kyc">KYC <span class="tab-count" data-count="kyc"></span></button>
         <button class="chip" type="button" data-tab="risk" data-min-role="admin">Risk</button>
         <button class="chip" type="button" data-tab="payments" data-min-role="owner">Payments</button>
@@ -276,6 +278,19 @@ document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
       <div id="players"></div>
       <!-- 360 detail slides in over the list -->
       <div id="player-detail" hidden></div>
+    </section>
+
+    <!-- Referral payouts: every rupee the referral programme has paid, which
+         game paid it, and whether the rate was halved because both players in
+         that game were referred. -->
+    <section id="tab-referrals" hidden>
+      <div class="mb-3 flex flex-wrap items-center gap-1.5">
+        <button class="sub-btn is-active" type="button" data-reftype="all">All payouts</button>
+        <button class="sub-btn" type="button" data-reftype="split">Both referred (half rate)</button>
+        <button class="sub-btn" type="button" data-reftype="full">One referred (full rate)</button>
+        <input class="field !h-9 ml-auto w-full sm:w-64" id="ref-q" placeholder="Search referrer, player or battle id" autocomplete="off">
+      </div>
+      <div id="referrals"></div>
     </section>
 
     <section id="tab-risk" hidden>

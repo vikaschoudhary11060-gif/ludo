@@ -7,7 +7,7 @@
    changed once, and three divergent copies would pay different
    amounts depending on which path happened to settle the battle.
    ============================================================ */
-import { col, credit } from './db.js';
+import { col, credit, nextId, now } from './db.js';
 
 /** Which field on the battle holds a player's recorded stake split. */
 const stakeField = (battle, userId) =>
@@ -93,13 +93,30 @@ export async function refundStake(session, battle, userId, note) {
   return { deposit: split.deposit, winnings: split.winnings, recorded: true, source };
 }
 
+/** The referral rate that actually applies to one settled battle.
+
+    A referrer normally earns `referral_rate` of the stake. When BOTH players
+    arrived through a referral the per-battle referral budget is split rather
+    than doubled — each referrer earns half the rate, so the house pays the
+    same 1% of the stake whether one player was referred or both.
+
+    Exported and pure so the rule is stated once and can be tested directly:
+    the admin console quotes it, and the settlement path pays it. */
+export function referralRateFor(baseRate, referredPlayers) {
+  const rate = Number.isFinite(baseRate) ? baseRate : 0.01;
+  if (rate <= 0) return 0;
+  return referredPlayers > 1 ? rate / 2 : rate;
+}
+
 /** Pay both players' referrers their cut of a settled battle.
-    `source` labels the ledger entry ('battle' or 'dispute').
+    `source` labels the ledger entry — 'battle' for a live settlement or an
+    auto-settlement by the sweeper, 'dispute' for one an admin resolved.
     Appends [userId, title, body] notification tuples to `notes`. */
 export async function payReferralCuts(session, battle, settings, notes = [], source = 'battle') {
-  const rate = settings?.referral_rate;
-  const cut = Math.round(battle.amount * (Number.isFinite(rate) ? rate : 0.01));
-  if (cut <= 0) return notes;
+  const baseRate = Number.isFinite(settings?.referral_rate) ? settings.referral_rate : 0.01;
+  /* Cheap exit before any query: a switched-off referral programme has
+     nothing to look up. */
+  if (baseRate <= 0) return notes;
 
   /* `source` keeps each caller's own ledger wording — an admin-resolved
      dispute stayed distinguishable from an automatic settlement, and anyone
@@ -114,12 +131,44 @@ export async function payReferralCuts(session, battle, settings, notes = [], sou
     .find({ id: { $in: ids } }, { session, projection: { _id: 0, id: 1, name: 1, referred_by: 1 } })
     .toArray();
 
-  for (const u of players) {
-    if (!u?.referred_by) continue;
+  /* Who this battle actually pays for. Counted before anything is credited,
+     because the count is what decides the rate — working it out per player
+     inside the loop would pay the first referrer the full rate and the second
+     a half. */
+  const earning = players.filter(u => u?.referred_by != null);
+  if (!earning.length) return notes;
+
+  const split = earning.length > 1;
+  const rate = referralRateFor(baseRate, earning.length);
+  const cut = Math.round(battle.amount * rate);
+  if (cut <= 0) return notes;
+
+  for (const u of earning) {
     await credit(u.referred_by, 'referral', cut,
       `Referral bonus — ${label}`, battle.id, 'success', session);
     await col('referrals').updateOne(
       { referrer_id: u.referred_by, referee_id: u.id }, { $inc: { earned: cut } }, { session });
+
+    /* A dedicated row per transfer, so the admin console can show which game
+       paid which referrer for which player. The wallet credit alone cannot
+       answer that: its ledger row names the referrer and the battle but never
+       the referee, and deriving the referee from `users.referred_by` breaks
+       the moment that field is edited. */
+    await col('referral_earnings').insertOne({
+      id: await nextId('referral_earnings'),
+      referrer_id: u.referred_by,
+      referee_id: u.id,
+      battle_id: battle.id,
+      mode: battle.mode || null,
+      stake: battle.amount,
+      amount: cut,
+      rate,
+      base_rate: baseRate,
+      split,                      // true when both players were referred
+      source,                     // battle | dispute | sweeper
+      created_at: now(),
+    }, session ? { session } : undefined);
+
     notes.push([u.referred_by, 'Referral bonus earned! 💰',
       `You earned ₹${cut} from ${u.name || 'your referral'}'s match.`]);
   }

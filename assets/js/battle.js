@@ -287,15 +287,34 @@
     }
   }
 
+  /* The skeleton stands in for the whole screen until the first fetch
+     resolves, so it has to come down on either outcome — the battle rendering
+     or the not-found panel. Leaving it up on the error path would show
+     shimmering bars above "Battle not found" forever. Idempotent: load() runs
+     again on every poll and socket frame. */
+  let skeletonShown = true;
+  function hideSkeleton() {
+    if (!skeletonShown) return;
+    skeletonShown = false;
+    const sk = $('#battle-skeleton');
+    if (sk) sk.remove();
+  }
+
   async function load() {
     try {
       const data = await Api.battles.get(id);
       const before = battle;
       battle = data.battle; claims = data.claims || [];
+      const first = skeletonShown;
+      hideSkeleton();
       render();
+      // Only the first paint slides in; a poll re-rendering the same screen
+      // every eight seconds would otherwise animate on top of itself.
+      if (first) $('#battle-view').classList.add('animate-slide-up');
       // After render, so the screen already shows what the alert is about.
       announceChange(before, battle);
     } catch {
+      hideSkeleton();
       $('#battle-missing').hidden = false;
     }
   }
@@ -320,7 +339,7 @@
   }
 
   K.ready.then(async () => {
-    if (!id) { $('#battle-missing').hidden = false; return; }
+    if (!id) { hideSkeleton(); $('#battle-missing').hidden = false; return; }
     try {
       const conf = await K.config();
       /* Take a value only when the server actually sent a usable number. A
