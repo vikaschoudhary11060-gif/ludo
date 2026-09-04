@@ -313,6 +313,41 @@ which is the safe default, not a silent pass.
   remembered; an **update bar** appears when a new build is deployed
 - Verified: service worker active at scope `/`, 20 files cached
 
+## Performance
+
+The API host answers a no-op endpoint in 350–1100 ms, so **the number of round
+trips on the critical path is the thing that decides how fast a page feels** —
+not payload size, not the front end, which finishes parsing in ~130 ms.
+
+Two rules keep that path to a single wave:
+
+**One `/api/config` per page.** `app.js` memoises it; page scripts call
+`K.config()`, never `Api.config()`. Three of them used to call `Api.config()`
+directly, and on the lobby the duplicate queued behind the original on the API
+host and pushed the battle list a whole round trip later. `tests/request-warming.test.mjs`
+fails the build if a page script opens its own.
+
+**A page issues its own first GET at script-evaluation time**, via
+`Api.warm(fn)`, instead of waiting inside `K.ready` behind `/api/auth/me` and
+`/api/config` — two documents it does not depend on. Nothing renders earlier or
+in a different order; the page still consumes the result exactly where it did
+before, so only the waiting overlaps. Warming is one-shot: the first consumer
+gets the warmed response and every consumer after it gets a fresh request, so a
+poll, a socket update or a refetch after an action is never handed a stale body.
+
+Each warmed script guards with `const warm = (window.Api && Api.warm) || (fn => fn)`.
+The service worker keeps `api.js` in its cached shell and serves it
+stale-while-revalidate, so for one navigation after a deploy a fresh page script
+can be paired with the previous `api.js`; the fallback degrades to the old
+timing rather than throwing.
+
+Measured on the lobby, three loads each against the live API:
+
+| | requests | battle list issued at | data complete |
+|---|---|---|---|
+| before | 5 | ~2,900 ms | ~4,700 ms |
+| after | 3 | ~90 ms | ~1,400 ms |
+
 ## Theme and language
 
 Both controls sit at the **top of the slide-in menu**, above the navigation, and persist

@@ -83,7 +83,44 @@
     return data;
   }
 
+  /* ---- warming a page's own first request ----
+
+     Every page script evaluates before K.ready resolves, and everything
+     inside K.ready waits first on /api/auth/me and /api/config. On this host
+     one round trip costs the better part of a second, so that put each page's
+     own data a full trip behind two documents it does not depend on — the
+     lobby measured 1.9s waiting for /api/config before it even asked for the
+     battle list.
+
+     warm(fn) issues the request now and hands it to the first caller that
+     asks. Nothing renders earlier or in a different order: the page still
+     consumes the result exactly where it always did, and the two waits simply
+     overlap instead of running end to end.
+
+     One consumer, once. The returned function gives up the warmed promise on
+     its first call and issues a fresh request on every call after, so a poll,
+     a socket update or a refetch after an action is never served a body that
+     was fetched before it happened. A warm that is never claimed, or claimed
+     too late to still be current, falls back to a normal request — so the
+     worst case is exactly today's behaviour plus one unused GET. */
+  const WARM_TTL_MS = 30000;
+
+  function warm(fn) {
+    let pending;
+    try { pending = fn(); } catch { return fn; }      // never let warming break a page
+    /* The original promise is what the caller gets, rejection and all. This
+       only stops an unclaimed failure surfacing as an unhandled rejection. */
+    if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+    const at = Date.now();
+    return () => {
+      const claimed = pending;
+      pending = null;
+      return claimed && Date.now() - at < WARM_TTL_MS ? claimed : fn();
+    };
+  }
+
   const Api = {
+    warm,
     get token() { return getToken(); },
     setToken,
     isLoggedIn: () => !!getToken(),

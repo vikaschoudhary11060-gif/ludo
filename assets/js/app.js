@@ -337,8 +337,13 @@
   const ready = new Promise(resolve => {
     document.addEventListener('DOMContentLoaded', async () => {
       captureReferral();
-      // The API host sleeps when idle; nudge it awake before anything needs it.
-      if (window.Api && Api.wake) Api.wake();
+      /* config() is the wake-up call. It goes out in this same tick and hits
+         the same host, so the separate /health ping that used to sit here
+         woke nothing that was not already being woken — it only took a
+         connection slot and a queue place away from a request the page is
+         actually waiting on. On a single-worker host that is not free:
+         concurrent requests queue behind each other, and this one bought
+         nothing. Api.wake() is still exported for callers that need it. */
       config();                              // one fetch, shared by every page script
       initDrawer(); initModals(); markActiveNav();
       $$('[data-year]').forEach(el => (el.textContent = new Date().getFullYear()));

@@ -2,10 +2,25 @@
 (function () {
   'use strict';
   const K = window.Khelbro; const { $, toast } = K;
+  /* `Api.warm` may be absent for one navigation after a deploy: the service
+     worker keeps api.js in its cached shell and serves it stale-while-
+     revalidate, so a fresh copy of THIS file can be paired with the previous
+     api.js. Falling back to calling the function directly is exactly what this
+     page did before warming existed, so the worst case is the old timing —
+     never a broken page. */
+  const warm = (window.Api && Api.warm) || (fn => fn);
+  /* Issued now instead of after /api/auth/me and /api/config, neither of
+     which this request depends on. Gated on the token, the same condition
+     requireSession() resolves to, so a signed-out visitor still issues
+     nothing. Only the first call is served from the warm one. */
+  const getNotifications = Api.isLoggedIn()
+    ? warm(() => Api.users.notifications())
+    : () => Api.users.notifications();
+
 
   async function render() {
     let list = [];
-    try { list = (await Api.users.notifications()).notifications; } catch {}
+    try { list = (await getNotifications()).notifications; } catch {}
     $('#note-empty').hidden = list.length > 0;
     $('#note-list').innerHTML = list.map(n => `
       <li class="rounded-tile border ${n.read ? 'border-line bg-surface' : 'border-brand/40 bg-brand/5'} p-3.5">

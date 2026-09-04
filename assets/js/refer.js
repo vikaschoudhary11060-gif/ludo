@@ -4,6 +4,21 @@
   const K = window.Khelbro;
   const { $, $$, money, toast, copy, busy } = K;
 
+  /* `Api.warm` may be absent for one navigation after a deploy: the service
+     worker keeps api.js in its cached shell and serves it stale-while-
+     revalidate, so a fresh copy of THIS file can be paired with the previous
+     api.js. Falling back to calling the function directly is exactly what this
+     page did before warming existed, so the worst case is the old timing —
+     never a broken page. */
+  const warm = (window.Api && Api.warm) || (fn => fn);
+  /* Issued now instead of after /api/auth/me and /api/config, neither of
+     which this request depends on. Gated on the token, the same condition
+     requireSession() resolves to, so a signed-out visitor still issues
+     nothing. Only the first call is served from the warm one. */
+  const getReferralStats = Api.isLoggedIn()
+    ? warm(() => Api.referrals.stats())
+    : () => Api.referrals.stats();
+
   function formatDate(ts) {
     if (!ts) return 'Recently';
     const d = new Date(ts);
@@ -24,7 +39,7 @@
     };
 
     try {
-      stats = await Api.referrals.stats();
+      stats = await getReferralStats();
     } catch (e) {
       console.error('Failed to load referral stats', e);
     }

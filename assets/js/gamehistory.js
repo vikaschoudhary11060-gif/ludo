@@ -2,6 +2,21 @@
 (function () {
   'use strict';
   const K = window.Khelbro; const { $, $$, money } = K;
+  /* `Api.warm` may be absent for one navigation after a deploy: the service
+     worker keeps api.js in its cached shell and serves it stale-while-
+     revalidate, so a fresh copy of THIS file can be paired with the previous
+     api.js. Falling back to calling the function directly is exactly what this
+     page did before warming existed, so the worst case is the old timing —
+     never a broken page. */
+  const warm = (window.Api && Api.warm) || (fn => fn);
+  /* Issued now instead of after /api/auth/me and /api/config, neither of
+     which this request depends on. Gated on the token, the same condition
+     requireSession() resolves to, so a signed-out visitor still issues
+     nothing. Only the first call is served from the warm one. */
+  const getHistory = Api.isLoggedIn()
+    ? warm(() => Api.battles.history())
+    : () => Api.battles.history();
+
   const PER = 8;
   let filter = 'all', page = 1, all = [], rows = [];
 
@@ -78,7 +93,7 @@
     if (!K.requireSession()) return;
     let list = [];
     try {
-      list = (await Api.battles.history()).battles;
+      list = (await getHistory()).battles;
     } catch {
       /* An older server has no /history. Fall back to the plain list so the
          page still works — it just shows no balances. */

@@ -4,6 +4,15 @@
   'use strict';
   const K = window.Khelbro; const { $, money } = K;
   const id = new URLSearchParams(location.search).get('id');
+  /* `Api.warm` may be absent for one navigation after a deploy: the service
+     worker keeps api.js in its cached shell and serves it stale-while-
+     revalidate, so a fresh copy of THIS file can be paired with the previous
+     api.js. Falling back to calling the function directly is exactly what this
+     page did before warming existed, so the worst case is the old timing —
+     never a broken page. */
+  const warm = (window.Api && Api.warm) || (fn => fn);
+  // Issued now, consumed below — it does not depend on /api/config.
+  const getBattle = id ? warm(() => Api.battles.get(id)) : () => Api.battles.get(id);
   let started = Date.now();
 
   K.ready.then(async () => {
@@ -11,7 +20,7 @@
     await K.config();
 
     let battle;
-    try { battle = (await Api.battles.get(id)).battle; }
+    try { battle = (await getBattle()).battle; }
     catch { location.replace('battles.html'); return; }
 
     // Real numbers in hand — swap the placeholder bars for the card.

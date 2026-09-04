@@ -129,6 +129,30 @@ async function ensureIndexes() {
     /* The open window's safety net sweeps on this every tick. */
     d.collection('battles').createIndex({ is_bot: 1, bot_accept_at: 1 }, { sparse: true }),
     d.collection('users').createIndex({ is_bot: 1 }),
+
+    /* ---- indexes the hot paths were missing ----
+       Pure performance: an index changes which rows are scanned, never which
+       rows come back. */
+
+    /* Refunds and the settlement sweeper rebuild a player's stake split from
+       the ledger by battle id, and that runs INSIDE the settlement
+       transaction — a collection scan there holds locks for as long as the
+       ledger is big. The referral backfill reads the same field. */
+    d.collection('transactions').createIndex({ ref_id: 1 }),
+
+    /* /battles/mine is an $or over these two fields sorted by created_at, and
+       the lobby asks for it on every load and every poll. With only the
+       single-field indexes each branch came back unsorted and Mongo sorted
+       the union in memory; carrying created_at in the index removes that
+       blocking sort. They also serve the two counts on /auth/me, which every
+       page load makes. */
+    d.collection('battles').createIndex({ creator_id: 1, created_at: -1 }),
+    d.collection('battles').createIndex({ acceptor_id: 1, created_at: -1 }),
+
+    /* The admin player view reads a single player's requests newest-first.
+       The existing indexes are keyed on status, which does not serve it. */
+    d.collection('deposit_requests').createIndex({ user_id: 1, created_at: -1 }),
+    d.collection('withdrawal_requests').createIndex({ user_id: 1, created_at: -1 }),
   ]);
 }
 

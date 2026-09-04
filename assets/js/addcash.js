@@ -45,7 +45,10 @@
     if (!K.requireSession()) return;
     let conf = {};
     try {
-      conf = await Api.config();
+      /* The shared fetch, already in flight from boot — not a second one.
+         K.config() resolves to {} rather than rejecting, which lands on the
+         same defaults this catch already falls back to. */
+      conf = await K.config();
       if (conf.deposit) LIM = conf.deposit;
       BONUS = conf.bonus || null;
     } catch {}

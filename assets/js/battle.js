@@ -10,6 +10,18 @@
   const { $, $$, money, toast, busy, copy } = K;
 
   const id = new URLSearchParams(location.search).get('id');
+
+  /* `Api.warm` may be absent for one navigation after a deploy: the service
+     worker keeps api.js in its cached shell and serves it stale-while-
+     revalidate, so a fresh copy of THIS file can be paired with the previous
+     api.js. Falling back to calling the function directly is exactly what this
+     page did before warming existed, so the worst case is the old timing —
+     never a broken page. */
+  const warm = (window.Api && Api.warm) || (fn => fn);
+  /* Issued now rather than after K.ready — this page's whole screen waits on
+     it, and it depends on neither the session nor /api/config. The skeleton
+     covers the wait either way; this just makes the wait shorter. */
+  const getBattle = id ? warm(() => Api.battles.get(id)) : () => Api.battles.get(id);
   let battle = null, claims = [], chosen = null;
   /* Server-owned windows, filled from /api/config. The literals are only a
      stand-in until that call returns — the server is always the authority. */
@@ -302,7 +314,7 @@
 
   async function load() {
     try {
-      const data = await Api.battles.get(id);
+      const data = await getBattle();
       const before = battle;
       battle = data.battle; claims = data.claims || [];
       const first = skeletonShown;

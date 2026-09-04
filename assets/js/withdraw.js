@@ -8,7 +8,8 @@
   K.ready.then(async () => {
     if (!K.requireSession()) return;
     let conf = {};
-    try { conf = await Api.config(); } catch {}
+    // The shared fetch from boot, not a second identical request.
+    try { conf = await K.config(); } catch {}
     if (conf.withdraw && Number.isFinite(conf.withdraw.min)) MIN = conf.withdraw.min;
     if (conf.withdrawOpen === false) { $('#withdraw-closed').hidden = false; return; }
     if (K.state.user.kyc !== 'done') { $('#kyc-gate').hidden = false; return; }

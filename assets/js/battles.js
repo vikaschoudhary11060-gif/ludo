@@ -10,6 +10,26 @@
   let cfg = { name: 'Ludo Classic', min: 50, max: 25000, step: 10 };
   let open = [], running = [], mine = [];
 
+
+  /* `Api.warm` may be absent for one navigation after a deploy: the service
+     worker keeps api.js in its cached shell and serves it stale-while-
+     revalidate, so a fresh copy of THIS file can be paired with the previous
+     api.js. Falling back to calling the function directly is exactly what this
+     page did before warming existed, so the worst case is the old timing —
+     never a broken page. */
+  const warm = (window.Api && Api.warm) || (fn => fn);
+  /* Issued now, consumed by the first load(). `mode` comes off the URL, so
+     these are fully determined before K.ready resolves — no reason to wait
+     behind /api/auth/me and /api/config for a list that depends on neither.
+     Every load() after the first goes to the network as it always did. */
+  const listOpen    = warm(() => Api.battles.list(mode, 'open'));
+  const listRunning = warm(() => Api.battles.list(mode, 'running'));
+  /* Gated on the token, the same condition refresh() uses, so a signed-out
+     visitor still issues nothing. */
+  const listMine    = Api.isLoggedIn()
+    ? warm(() => Api.battles.mine())
+    : () => Api.battles.mine();
+
   const avatar = (name, tint) =>
     `<span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full ${tint} text-[11px] font-bold text-white"
            aria-hidden="true">${(name || '?').slice(0, 1).toUpperCase()}</span>`;
@@ -356,9 +376,9 @@
          in, not only the ones matching the tab they happen to be looking at.
          It is only requested when signed in — /battles/mine needs auth. */
       const [o, r, m] = await Promise.all([
-        Api.battles.list(mode, 'open'),
-        Api.battles.list(mode, 'running'),
-        K.state.user ? Api.battles.mine().catch(() => ({ battles: [] })) : Promise.resolve({ battles: [] }),
+        listOpen(),
+        listRunning(),
+        K.state.user ? listMine().catch(() => ({ battles: [] })) : Promise.resolve({ battles: [] }),
       ]);
       open = o.battles; running = r.battles;
       const before = mine;
@@ -413,8 +433,13 @@
 
   K.ready.then(async () => {
     // Business rules come from the server, never hard-coded here.
+    /* K.config(), not Api.config(): the shared one is already in flight from
+       boot, so this awaits it instead of opening a second identical request.
+       This page asked for the same document twice, back to back — the second
+       call queued behind the first on the API host and pushed the battle list
+       a full round trip later than it needed to be. */
     try {
-      const conf = await Api.config();
+      const conf = await K.config();
       cfg = conf.modes[mode];
     } catch { /* fall back to the defaults above */ }
 
