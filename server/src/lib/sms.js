@@ -37,8 +37,9 @@ export async function sendOtpSms(phone, code) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        variables_values: String(code),
-        route: 'otp',
+        message: `Your Khelbro verification code is ${code}. Valid for 5 minutes. Do not share this code with anyone.`,
+        language: 'english',
+        route: 'q',
         numbers: cleanPhone,
       }),
       signal: controller.signal,
