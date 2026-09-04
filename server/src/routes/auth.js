@@ -8,6 +8,7 @@ import { sign, requireAuth } from '../lib/auth.js';
 import { passwordProblem, hashPassword, checkPassword, shouldLock, lockUpdate,
          lockoutRemaining, lockoutMessage, LOCKOUT_MS, PASSWORD_MIN, PASSWORD_MAX } from '../lib/password.js';
 import { OTP_TTL_MS, OTP_MAX_ATTEMPTS, IS_PROD, signupBonuses } from '../lib/config.js';
+import { sendOtpSms } from '../lib/sms.js';
 
 const router = SafeRouter();
 
@@ -163,8 +164,11 @@ router.post('/request-otp', otpLimiter, async (req, res) => {
   const code = randomCode();
   await col('otps').updateOne({ phone },
     { $set: { phone, code, expires_at: now() + OTP_TTL_MS, attempts: 0 } }, { upsert: true });
-  // TODO: hand `code` to an SMS provider. Never log it in production.
-  if (!IS_PROD) console.log(`[otp] ${phone} -> ${code}`);
+
+  // Send real SMS via Fast2SMS if API key is configured
+  const smsResult = await sendOtpSms(phone, code);
+
+  if (!IS_PROD) console.log(`[otp] ${phone} -> ${code} (SMS: ${smsResult.ok ? 'sent' : smsResult.error})`);
   res.json({ ok: true, expiresIn: Math.floor(OTP_TTL_MS / 1000),
              ...(EXPOSE_OTP ? { devCode: code, otp: code } : {}) });
 });
