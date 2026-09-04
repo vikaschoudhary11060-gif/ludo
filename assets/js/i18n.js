@@ -131,6 +131,8 @@
     'Result submitted': 'रिज़ल्ट भेज दिया गया', 'Logged out': 'लॉग आउट हो गए',
     'You are offline': 'आप ऑफ़लाइन हैं', 'Back online': 'फिर से ऑनलाइन',
     'Insufficient balance. Add cash to continue.': 'बैलेंस कम है। जारी रखने के लिए कैश जोड़ें।',
+    'Another player just joined this battle.': 'इस बैटल में कोई और खिलाड़ी जुड़ चुका है।',
+    'That battle is no longer open.': 'यह बैटल अब खुली नहीं है।',
     'Upload screenshot.': 'स्क्रीनशॉट अपलोड करें।',
     'Invalid room code. It must be exactly 8 digits.': 'ग़लत रूम कोड। इसमें ठीक 8 अंक होने चाहिए।',
 

@@ -118,11 +118,39 @@ minutes; the OTP door stays open, so nobody can be locked out of their own accou
 
 ### Lobby bots
 
-Fifteen house accounts keep battles appearing on the lobby: one is created, a second
-bot accepts it two to three seconds later so it lands in **Running**, and it is removed
-a few minutes on. They never touch a wallet, never write a ledger row and never settle,
-and every admin figure filters them out — so there is no bot commission to report. Real
-players cannot join one or open its detail page. Switch them off with `BOT_BATTLES=false`.
+Fifteen house accounts, each with a real first-and-last name, keep the board occupied.
+**Five bot battles sit on the lobby at a time**, and each one lives the same life in
+public that a real battle does:
+
+```
+open  →  another bot accepts it within 5 seconds  →  running  →  removed after 3-8 min
+```
+
+The open window is the point. A board where challenges only ever appear already-running
+looks staged; one where a challenge goes up, is taken and disappears looks like a room
+with people in it. Five seconds is a hard ceiling, not a default — `BOT_ACCEPT_MAX_MS`
+can only narrow it. A per-battle timer delivers the acceptance and the engine tick
+(2 s) sweeps up anything a restart orphaned, so the promise survives a deploy.
+
+**A real player who taps one inside that window is told "Another player just joined this
+battle."** — and that is made true on the spot: the tap hands the battle to the bot that
+was already lined up to take it, so the row is gone by the refresh that follows instead
+of sitting there looking free. No stake is taken and no ledger row is written.
+
+Every bot battle is cleared from the database when the server starts, so a deploy never
+leaves rows behind that no timer will ever accept or retire.
+
+They never touch a wallet, never write a ledger row and never settle, and every admin
+figure filters them out — so there is no bot commission to report. Real players cannot
+join one or open its detail page. Switch them off with `BOT_BATTLES=false`.
+
+| Variable | Default | |
+|---|---|---|
+| `BOT_BATTLES` | `true` | `false` switches the whole feature off |
+| `BOT_TARGET_RUNNING` | `5` | battles held on the board, open ones counted |
+| `BOT_ACCEPT_MIN_MS` / `BOT_ACCEPT_MAX_MS` | `1500` / `4000` | the open window; the max is clamped to 5 000 |
+| `BOT_LIFETIME_MIN_MS` / `BOT_LIFETIME_MAX_MS` | `180000` / `480000` | how long it stays in Running |
+| `BOT_TICK_MS` | `2000` | engine pass; clamped to 5 000 so the sweep stays a net |
 
 ### Settings the admin owns
 

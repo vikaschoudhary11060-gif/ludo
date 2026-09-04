@@ -325,43 +325,84 @@ test('the cancel window after the room code', async t => {
 test('lobby bots are decoration, not opponents', async t => {
   t.beforeEach(() => reset());
 
+  /* Two bots, because a bot battle now names the bot that will take it: one
+     opens the challenge, the other is waiting to accept it. */
   const botBattle = async (extra = {}) => {
-    const bot = await seedUser({ phone: '1000000001', name: 'RohitPlays', is_bot: true });
+    const host = await seedUser({ phone: '1000000001', name: 'Rohit Sharma', is_bot: true });
+    const waiting = await seedUser({ phone: '1000000002', name: 'Sneha Patil', is_bot: true });
     const id = 'bbbbbbbbbbbb';
     await fake.col('battles').insertOne({
-      id, mode: 'lite', amount: 500, status: 'open', creator_id: bot.id, acceptor_id: null,
+      id, mode: 'lite', amount: 500, status: 'open', creator_id: host.id, acceptor_id: null,
       room_code: null, winner_id: null, payout: null, created_at: Date.now(), settled_at: null,
-      creator_stake: null, acceptor_stake: null, is_bot: true, ...extra,
+      creator_stake: null, acceptor_stake: null, is_bot: true,
+      bot_acceptor_id: waiting.id, bot_accept_at: Date.now() + 3000, ...extra,
     });
-    return id;
+    return { id, host, waiting };
   };
 
-  await t.test('a real player cannot join one', async () => {
-    const id = await botBattle();
+  await t.test('a real player is told someone else got there first', async () => {
+    const { id } = await botBattle();
     const u = await seedUser({ phone: '9800000005', deposit: 5000 });
     const r = await api.post(`/api/battles/${id}/accept`, {}, u.token);
     assert.equal(r.status, 409);
-    assert.equal(r.body.error, 'That battle is no longer open.');
+    assert.equal(r.body.error, 'Another player just joined this battle.');
+    assert.equal(r.body.code, 'TAKEN');
     assert.equal((await walletOf(u.id)).deposit, 5000, 'a stake was taken for a fake battle');
-    assert.equal((await fake.col('battles').findOne({ id })).acceptor_id, null);
+  });
+
+  await t.test('the tap hands the battle to the waiting bot, not the player', async () => {
+    const { id, waiting } = await botBattle();
+    const u = await seedUser({ phone: '9800000005', deposit: 5000 });
+    await api.post(`/api/battles/${id}/accept`, {}, u.token);
+
+    const after = await fake.col('battles').findOne({ id });
+    assert.equal(after.status, 'running', 'the message must be true by the next refresh');
+    assert.equal(after.acceptor_id, waiting.id);
+    assert.notEqual(after.acceptor_id, u.id, 'a real player was written onto a bot battle');
+    assert.equal(fake.dump('transactions').length, 0, 'a bot battle wrote to the ledger');
+  });
+
+  await t.test('a second tap on the same battle says the same thing', async () => {
+    const { id } = await botBattle();
+    const a = await seedUser({ phone: '9800000005', deposit: 5000 });
+    const b = await seedUser({ phone: '9800000006', deposit: 5000 });
+    await api.post(`/api/battles/${id}/accept`, {}, a.token);
+    const second = await api.post(`/api/battles/${id}/accept`, {}, b.token);
+    assert.equal(second.status, 409);
+    assert.equal(second.body.error, 'Another player just joined this battle.');
+    assert.equal((await walletOf(b.id)).deposit, 5000);
+  });
+
+  await t.test('a battle already running is refused just the same', async () => {
+    const { id, waiting } = await botBattle({ status: 'running', acceptor_id: 3, room_code: '11223344' });
+    const u = await seedUser({ phone: '9800000005', deposit: 5000 });
+    const r = await api.post(`/api/battles/${id}/accept`, {}, u.token);
+    assert.equal(r.status, 409);
+    assert.equal((await walletOf(u.id)).deposit, 5000);
+    assert.equal((await fake.col('battles').findOne({ id })).acceptor_id, 3,
+      'the running battle was rewritten');
+    assert.ok(waiting.id);
   });
 
   await t.test('its detail page does not exist', async () => {
-    const id = await botBattle();
+    const { id } = await botBattle();
     const u = await seedUser({ phone: '9800000005' });
     assert.equal((await api.get(`/api/battles/${id}`, u.token)).status, 404);
     assert.equal((await api.get(`/api/battles/${id}`)).status, 404, 'even to an anonymous viewer');
   });
 
-  await t.test('bot battles are excluded from the public open lobby', async () => {
+  await t.test('is visible on the open board while it waits to be taken', async () => {
     await botBattle();
     const r = await api.get('/api/battles?mode=lite&status=open');
     assert.equal(r.status, 200);
-    assert.deepEqual(r.body.battles.map(b => b.creator.name), []);
+    assert.deepEqual(r.body.battles.map(b => b.creator.name), ['Rohit Sharma'],
+      'the open window is the whole point — the lobby has to show it');
+    assert.equal(r.body.battles[0].roomCode, null, 'nothing to leak while it is open');
   });
 
   await t.test('a running bot battle never leaks a room code to onlookers', async () => {
     await botBattle({ status: 'running', room_code: '99887766', acceptor_id: 999 });
+    // eslint-disable-next-line no-unused-expressions
     const u = await seedUser({ phone: '9800000005' });
     const r = await api.get('/api/battles?mode=lite&status=running', u.token);
     assert.equal(r.body.battles[0].roomCode, null);

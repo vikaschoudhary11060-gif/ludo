@@ -126,6 +126,8 @@ async function ensureIndexes() {
        figure filters battles and users on is_bot. */
     d.collection('battles').createIndex({ is_bot: 1, status: 1 }),
     d.collection('battles').createIndex({ is_bot: 1, bot_retire_at: 1 }, { sparse: true }),
+    /* The open window's safety net sweeps on this every tick. */
+    d.collection('battles').createIndex({ is_bot: 1, bot_accept_at: 1 }, { sparse: true }),
     d.collection('users').createIndex({ is_bot: 1 }),
   ]);
 }

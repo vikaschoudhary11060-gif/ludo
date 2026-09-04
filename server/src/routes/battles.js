@@ -12,6 +12,7 @@ import { requireAuth, optionalAuth } from '../lib/auth.js';
 import { MODES, CLAIM_GRACE_MS, GRACE_LABEL, CANCEL_LABEL, cancelWindowOpen, prizeFor,
          CANCEL_REASON_IDS, cancelReasonLabel, cancelPlan } from '../lib/config.js';
 import { payReferralCuts, refundStake } from '../lib/settlement.js';
+import { botTakeOver } from '../lib/bots.js';
 import { isPlayer, shape, fetchBattles, fetchBattle } from '../lib/battle-view.js';
 
 const router = SafeRouter();
@@ -48,7 +49,11 @@ router.get('/', optionalAuth, async (req, res) => {
   const mode = MODES[req.query.mode] ? req.query.mode : 'lite';
   const status = ['open', 'requested', 'waiting', 'running'].includes(req.query.status) ? req.query.status : null;
   const match = { mode, status: status ? status : { $in: ['open', 'requested', 'waiting', 'running'] } };
-  if (status === 'open' || !status) match.is_bot = { $ne: true };
+  /* Bot battles are deliberately NOT filtered out here any more. They exist to
+     make the board look occupied, and a challenge that is only ever visible
+     once it is already running does not do that — the lobby needs to see one
+     go up and be taken. It is open for at most five seconds, and /accept
+     answers a tap inside that window honestly. */
   const rows = await fetchBattles(match, 100);
   res.json({ battles: rows.map(b => shape(b, req.user?.id ?? null)) });
 });
@@ -182,16 +187,33 @@ router.post('/', requireAuth, async (req, res) => {
 /* POST /api/battles/:id/accept (Opponent sends join request) */
 router.post('/:id/accept', requireAuth, async (req, res) => {
   const id = req.params.id;
+
+  /* A lobby bot's challenge is spoken for from the moment it appears —
+     another bot takes it within five seconds. A tap inside that window is
+     not an error in the player's world, it is "somebody else got there
+     first", so that is what they are told rather than a flat refusal.
+
+     Handing it to the waiting bot here as well is what makes the message
+     true by the time it is read: the takeover emits `battle:removed`, so the
+     row is gone on the refresh that follows instead of sitting on the board
+     still looking free. Checked before the transaction because no wallet is
+     involved — nothing here can move a rupee. */
+  const peek = await col('battles').findOne({ id }, { projection: { _id: 0, is_bot: 1 } });
+  if (peek?.is_bot) {
+    await botTakeOver(req.app, id).catch(e => console.error('[bots] takeover failed:', e?.message));
+    return res.status(409).json({ error: 'Another player just joined this battle.', code: 'TAKEN' });
+  }
+
   let creatorId, amount;
   try {
     await withTransaction(async session => {
       const b = await col('battles').findOne({ id }, { session });
       if (!b) throw new Error('NOTFOUND');
       if (b.status !== 'open') throw new Error('CLOSED');
-      /* A lobby bot has no wallet behind it and cannot play a real Ludo
-         match, so nobody joins one. It is only open for two or three seconds,
-         but a tap inside that window has to land somewhere honest. */
-      if (b.is_bot) throw new Error('CLOSED');
+      /* Backstop. The check above catches this before the transaction; this
+         one is here so the guard cannot be lost by a refactor of that path —
+         a bot has no wallet behind it and can never really be joined. */
+      if (b.is_bot) throw new Error('TAKEN');
       if (b.creator_id === req.user.id) throw new Error('OWN');
       const already = await col('battles').findOne({ acceptor_id: req.user.id, status: { $in: ['requested', 'waiting', 'running'] } }, { session });
       if (already) throw new Error('ENROLLED');
@@ -203,6 +225,7 @@ router.post('/:id/accept', requireAuth, async (req, res) => {
     });
   } catch (e) {
     const map = { NOTFOUND: [404, 'Battle not found.'], CLOSED: [409, 'That battle is no longer open.'],
+      TAKEN: [409, 'Another player just joined this battle.'],
       OWN: [400, 'You created this battle.'], INSUFFICIENT: [400, 'Insufficient balance. Add cash to continue.'],
       ENROLLED: [409, 'You have already requested or joined another battle.'] };
     if (map[e.message]) return res.status(map[e.message][0]).json({ error: map[e.message][1] });
