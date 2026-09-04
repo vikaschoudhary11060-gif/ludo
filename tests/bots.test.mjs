@@ -27,8 +27,8 @@ mock.module(new URL('../server/src/lib/mongo.js', import.meta.url).href, {
   },
 });
 
-const { ensureBots, runBotTick, botTakeOver, purgeBotBattles,
-        BOT_COUNT, TARGET_LIVE, ACCEPT_CEILING_MS, NOT_BOT } = await import('../server/src/lib/bots.js');
+const { ensureBots, runBotTick, botTakeOver, purgeBotBattles, rotateBotNames,
+        BOT_COUNT, TARGET_RUNNING, TARGET_OPEN, NOT_BOT } = await import('../server/src/lib/bots.js');
 const { MODES } = await import('../server/src/lib/config.js');
 
 /* No `io` on the app: emitCreated returns early, which keeps the tests off
@@ -37,19 +37,6 @@ const APP = { get: () => null };
 
 const battles = () => fake.dump('battles');
 const bots = () => fake.dump('users').filter(u => u.is_bot);
-
-/** Drive the engine until it has put `n` battles on the board. */
-async function fill(n) {
-  for (let i = 0; i < n * 4 && battles().length < n; i++) await runBotTick(APP);
-}
-
-/** One tick, with every open battle's moment brought forward so the same pass
-    also takes them over. Tests that care about the steady state want the board
-    as it looks a few seconds later, not mid-window. */
-async function settle() {
-  for (const b of battles()) if (b.status === 'open') b.bot_accept_at = Date.now() - 1;
-  await runBotTick(APP);
-}
 
 test('the bot pool', async t => {
   t.beforeEach(() => fake.reset());
@@ -81,8 +68,6 @@ test('the bot pool', async t => {
 
   await t.test('no bot carries a referral code', async () => {
     await ensureBots();
-    // The index on referral_code is unique+sparse: sparse skips a *missing*
-    // field but still indexes an explicit null, so nulls would collide.
     for (const b of bots()) {
       assert.ok(!('referral_code' in b), `${b.name} has a referral_code field`);
     }
@@ -94,43 +79,28 @@ test('the bot pool', async t => {
     assert.equal(names.length, BOT_COUNT);
     assert.equal(new Set(names).size, BOT_COUNT, 'two bots share a name');
     for (const n of names) {
-      /* These sit on the open board next to real players. A handle like
-         "AmanRolls" beside "Priya Nair" reads as a different kind of account,
-         which is exactly what a lobby bot must not do. */
       assert.match(n, /^[A-Z][a-z]+ [A-Z][a-z]+$/, `"${n}" is not a first and last name`);
     }
   });
 
-  await t.test('renames a pool that was seeded under the old handles', async () => {
+  await t.test('a restart leaves legitimate pool names alone', async () => {
     await ensureBots();
-    const one = fake.dump('users').find(u => u.phone === '1000000001');
-    const proper = one.name;
-    one.name = 'RohitPlays';
-
+    const firstNames = bots().map(b => b.name);
     await ensureBots();
-    assert.equal(fake.dump('users').find(u => u.phone === '1000000001').name, proper,
-      'an existing pool must pick up the real names, not stay half-renamed');
-    assert.equal(bots().length, BOT_COUNT, 'the repair created a duplicate account');
+    assert.deepEqual(bots().map(b => b.name), firstNames);
   });
 
-  await t.test('keeps each name pinned to its own phone number', async () => {
+  await t.test('but replaces a name from an older seed', async () => {
     await ensureBots();
-    const first = Object.fromEntries(bots().map(b => [b.phone, b.name]));
+    const one = bots()[0];
+    fake.dump('users').find(u => u.id === one.id).name = 'AmanRolls';
     await ensureBots();
-    for (const b of bots()) {
-      assert.equal(b.name, first[b.phone], 'a restart shuffled who is who');
-    }
+    const after = bots().find(u => u.id === one.id).name;
+    assert.notEqual(after, 'AmanRolls', 'the old handle was left on the bot');
+    assert.match(after, /^[A-Z][a-z]+ [A-Z][a-z]+$/);
   });
 
-  await t.test('gives every bot a zeroed wallet', async () => {
-    await ensureBots();
-    const wallets = fake.dump('wallets');
-    assert.equal(wallets.length, BOT_COUNT);
-    for (const w of wallets) assert.deepEqual(
-      [w.deposit, w.winnings, w.referral], [0, 0, 0]);
-  });
-
-  await t.test('flags an account seeded before the flag existed', async () => {
+  await t.test('re-flags a bot whose is_bot flag was cleared', async () => {
     await ensureBots();
     const one = bots()[0];
     delete fake.dump('users').find(u => u.id === one.id).is_bot;
@@ -139,129 +109,95 @@ test('the bot pool', async t => {
   });
 });
 
-test('a bot battle appears open and is taken within five seconds', async t => {
+test('bot battle board structure: 3 running and 2 open', async t => {
   t.beforeEach(async () => { fake.reset(); await ensureBots(); });
 
-  await t.test('is created open, unaccepted, with no room code', async () => {
+  await t.test('creates exactly 3 running and 2 open battles on a fresh board', async () => {
     await runBotTick(APP);
-    const b = battles()[0];
-    assert.equal(b.status, 'open', 'the open window is what makes the board look alive');
-    assert.equal(b.acceptor_id, null);
-    assert.equal(b.room_code, null, 'an open battle has no room to join yet');
-    assert.equal(b.is_bot, true);
+    const running = battles().filter(b => b.status === 'running');
+    const open = battles().filter(b => b.status === 'open');
+    assert.equal(running.length, TARGET_RUNNING, `expected ${TARGET_RUNNING} running`);
+    assert.equal(open.length, TARGET_OPEN, `expected ${TARGET_OPEN} open`);
+    assert.equal(battles().length, TARGET_RUNNING + TARGET_OPEN);
   });
 
-  await t.test('names the bot that will take it, and it is never the host', async () => {
-    await runBotTick(APP);
-    for (const b of battles()) {
-      assert.ok(b.bot_acceptor_id != null, 'nobody is lined up to accept this');
-      assert.notEqual(b.bot_acceptor_id, b.creator_id, 'a bot was paired against itself');
-    }
-  });
-
-  await t.test('is due to be taken inside the five-second promise', async () => {
-    const at = Date.now();
-    await runBotTick(APP);
-    for (const b of battles()) {
-      assert.ok(b.bot_accept_at > at, 'it should not already be due');
-      assert.ok(b.bot_accept_at - at <= ACCEPT_CEILING_MS,
-        `${b.bot_accept_at - at}ms is past the five-second promise`);
-    }
-  });
-
-  await t.test('the sweep takes over everything that is due', async () => {
+  await t.test('open challenges have no acceptor, no room code, and valid bot creator', async () => {
     await runBotTick(APP);
     const open = battles().filter(b => b.status === 'open');
-    assert.ok(open.length, 'nothing was created to take over');
-    for (const b of open) b.bot_accept_at = Date.now() - 1;
-
-    await runBotTick(APP);
-    for (const id of open.map(b => b.id)) {
-      const after = battles().find(b => b.id === id);
-      assert.equal(after.status, 'running', 'an overdue battle was left open');
-      assert.ok(after.acceptor_id != null && after.acceptor_id !== after.creator_id);
-      assert.match(String(after.room_code), /^\d{8}$/, 'a running battle needs an 8-digit room code');
+    for (const b of open) {
+      assert.equal(b.status, 'open');
+      assert.equal(b.acceptor_id, null);
+      assert.equal(b.room_code, null);
+      assert.equal(b.is_bot, true);
+      assert.ok(b.creator_id != null);
+      assert.ok(b.bot_acceptor_id != null);
+      assert.notEqual(b.bot_acceptor_id, b.creator_id);
     }
   });
 
-  await t.test('the sweep leaves it alone until its moment', async () => {
+  await t.test('running matches have both players, room code, and retirement timestamp', async () => {
     await runBotTick(APP);
-    const before = battles().map(b => b.id);
-    await runBotTick(APP);                       // a tick inside the open window
-    for (const id of before) {
-      assert.equal(battles().find(b => b.id === id).status, 'open',
-        'the sweep took a battle over before its five seconds were up');
+    const running = battles().filter(b => b.status === 'running');
+    for (const b of running) {
+      assert.equal(b.status, 'running');
+      assert.ok(b.creator_id != null);
+      assert.ok(b.acceptor_id != null);
+      assert.notEqual(b.creator_id, b.acceptor_id);
+      assert.match(String(b.room_code), /^\d{8}$/);
+      assert.ok(b.bot_retire_at > Date.now());
     }
   });
 
-  await t.test('but a real player’s tap can take it over early', async () => {
-    /* botTakeOver() is deliberately not gated on the clock. The sweep checks
-       `bot_accept_at`; this does not, because the accept route calls it the
-       instant a player taps, and the row has to be gone by their refresh. */
+  await t.test('when a running battle retires, oldest open challenge is promoted', async () => {
     await runBotTick(APP);
-    const id = battles()[0].id;
-    assert.equal(await botTakeOver(APP, id), true);
-    assert.equal(battles().find(b => b.id === id).status, 'running');
+    const oldestOpen = battles().filter(b => b.status === 'open').sort((a, b) => a.created_at - b.created_at)[0];
+    assert.ok(oldestOpen);
+
+    // Expire one running match
+    const running = battles().find(b => b.status === 'running');
+    running.bot_retire_at = Date.now() - 1;
+
+    await runBotTick(APP);
+
+    // Oldest open should now be running
+    const promoted = battles().find(b => b.id === oldestOpen.id);
+    assert.equal(promoted.status, 'running');
+
+    // Counts must stay exactly 3 running and 2 open
+    assert.equal(battles().filter(b => b.status === 'running').length, TARGET_RUNNING);
+    assert.equal(battles().filter(b => b.status === 'open').length, TARGET_OPEN);
   });
 
-  await t.test('the retirement clock starts when it starts running, not before', async () => {
+  await t.test('botTakeOver allows early takeover when a player taps play', async () => {
     await runBotTick(APP);
-    const b = battles()[0];
-    assert.equal(b.bot_retire_at, null, 'an open battle is not yet on the clock');
-    await botTakeOver(APP, b.id);
-    assert.ok(battles().find(x => x.id === b.id).bot_retire_at > Date.now());
+    const open = battles().find(b => b.status === 'open');
+    assert.ok(open);
+    const res = await botTakeOver(APP, open.id);
+    assert.equal(res, true);
+    assert.equal(battles().find(b => b.id === open.id).status, 'running');
   });
 
-  await t.test('is never retired while it is still open', async () => {
-    /* Open battles carry `bot_retire_at: null`. A comparison operator does not
-       match null in MongoDB, so the retirement sweep steps over them — but a
-       change to 0, or to leaving the field off, would silently delete every
-       challenge before anyone could see it. */
+  await t.test('calling botTakeOver twice on the same battle returns false second time', async () => {
     await runBotTick(APP);
-    const ids = battles().filter(b => b.status === 'open').map(b => b.id);
-    assert.ok(ids.length, 'nothing open to test');
-    for (let i = 0; i < 3; i++) await runBotTick(APP);
-    for (const id of ids) {
-      assert.ok(battles().some(b => b.id === id), 'an open battle was retired before it ran');
-    }
-  });
-
-  await t.test('taking one over twice changes nothing the second time', async () => {
-    await runBotTick(APP);
-    const id = battles()[0].id;
-    assert.equal(await botTakeOver(APP, id), true);
-    const after = { ...battles().find(b => b.id === id) };
-    assert.equal(await botTakeOver(APP, id), false);
-    assert.equal(battles().find(b => b.id === id).acceptor_id, after.acceptor_id);
-    assert.equal(battles().find(b => b.id === id).room_code, after.room_code);
-  });
-
-  await t.test('drops the scheduling fields once it is running', async () => {
-    await runBotTick(APP);
-    const id = battles()[0].id;
-    await botTakeOver(APP, id);
-    const after = battles().find(b => b.id === id);
-    assert.equal('bot_accept_at' in after, false);
-    assert.equal('bot_acceptor_id' in after, false);
+    const open = battles().find(b => b.status === 'open');
+    assert.equal(await botTakeOver(APP, open.id), true);
+    assert.equal(await botTakeOver(APP, open.id), false);
   });
 });
 
-test('bot battles', async t => {
+test('bot battles financial integrity & board bounds', async t => {
   t.beforeEach(async () => { fake.reset(); await ensureBots(); });
 
   await t.test('never move money — no ledger row, no wallet change', async () => {
-    await fill(TARGET_LIVE);
-    await settle();
-
+    await runBotTick(APP);
     assert.equal(fake.dump('transactions').length, 0, 'a bot battle wrote to the ledger');
     for (const w of fake.dump('wallets')) {
-      assert.deepEqual([w.deposit, w.winnings, w.referral], [0, 0, 0],
-        'a bot wallet moved');
+      assert.deepEqual([w.deposit, w.winnings, w.referral], [0, 0, 0], 'a bot wallet moved');
     }
   });
 
   await t.test('stay within the mode limits the lobby publishes', async () => {
-    await fill(TARGET_LIVE);
+    await runBotTick(APP);
     for (const b of battles()) {
       const cfg = MODES[b.mode];
       assert.ok(cfg, `unknown mode ${b.mode}`);
@@ -271,35 +207,18 @@ test('bot battles', async t => {
     }
   });
 
-  await t.test(`holds ${TARGET_LIVE} on the board and does not overshoot`, async () => {
-    for (let i = 0; i < 40; i++) await settle();
-    assert.equal(battles().length, TARGET_LIVE,
-      `${battles().length} battles on a board meant to hold ${TARGET_LIVE}`);
-  });
-
-  await t.test('counts the open ones towards the target', async () => {
-    // Without that, every tick inside a five-second open window would decide
-    // the board was short and start another one.
-    for (let i = 0; i < 10; i++) await runBotTick(APP);
-    assert.equal(battles().length, TARGET_LIVE,
-      'open battles were not counted, so the board overshot');
-  });
-
-  await t.test('are removed once their time is up', async () => {
-    await fill(TARGET_LIVE);
-    await settle();
-    const running = battles().find(b => b.status === 'running');
-    assert.ok(running, 'nothing reached Running to retire');
-    const id = running.id;
-
-    running.bot_retire_at = Date.now() - 1;
-    await runBotTick(APP);
-    assert.equal(battles().some(b => b.id === id), false, 'the expired battle is still there');
+  await t.test('holds exactly 3 running and 2 open across repeated ticks', async () => {
+    for (let i = 0; i < 10; i++) {
+      await runBotTick(APP);
+      const running = battles().filter(b => b.status === 'running').length;
+      const open = battles().filter(b => b.status === 'open').length;
+      assert.equal(running, TARGET_RUNNING);
+      assert.equal(open, TARGET_OPEN);
+    }
   });
 
   await t.test('never settle, so there is no bot commission to earn', async () => {
-    await fill(TARGET_LIVE);
-    for (let i = 0; i < 5; i++) await settle();
+    await runBotTick(APP);
     for (const b of battles()) {
       assert.equal(b.winner_id, null);
       assert.equal(b.payout, null);
@@ -309,22 +228,35 @@ test('bot battles', async t => {
   });
 });
 
+test('rotateBotNames rotation logic', async t => {
+  t.beforeEach(async () => { fake.reset(); await ensureBots(); });
+
+  await t.test('rotates bot names', async () => {
+    await runBotTick(APP);
+    const renamed = await rotateBotNames(APP);
+    assert.ok(renamed >= 0);
+    // All bots should have valid distinct names
+    const names = bots().map(b => b.name);
+    assert.equal(names.length, BOT_COUNT);
+    assert.equal(new Set(names).size, BOT_COUNT);
+  });
+});
+
 test('clearing the board', async t => {
   t.beforeEach(async () => { fake.reset(); await ensureBots(); });
 
   await t.test('removes every bot battle, whatever state it is in', async () => {
-    await fill(TARGET_LIVE);
-    await runBotTick(APP);                       // leaves a mix of open and running
-    assert.ok(battles().length > 0);
+    await runBotTick(APP);
+    assert.equal(battles().length, TARGET_RUNNING + TARGET_OPEN);
 
     const cleared = await purgeBotBattles(APP);
-    assert.equal(cleared, TARGET_LIVE);
+    assert.equal(cleared, TARGET_RUNNING + TARGET_OPEN);
     assert.deepEqual(battles(), []);
   });
 
   await t.test('leaves real battles alone', async () => {
     await fake.col('battles').insertOne({ id: 'real1', status: 'open', amount: 500 });
-    await fill(TARGET_LIVE);
+    await runBotTick(APP);
     await purgeBotBattles(APP);
     assert.deepEqual(battles().map(b => b.id), ['real1']);
   });

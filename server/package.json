@@ -11,7 +11,8 @@
     "build": "echo 'No build step required'",
     "seed": "node src/seed-demo.js",
     "seed:demo": "node src/seed-demo.js",
-    "admin:create": "node src/create-admin.js"
+    "admin:create": "node src/create-admin.js",
+    "reset:bets": "node src/clean-and-reset-bets.js"
   },
   "engines": {
     "node": ">=20.0.0"
