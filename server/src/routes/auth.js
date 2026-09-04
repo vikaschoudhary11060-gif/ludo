@@ -14,8 +14,8 @@ const router = SafeRouter();
 
 
 
-/* Returning the OTP in response so users can test login during testing phase. */
-const EXPOSE_OTP = String(process.env.EXPOSE_OTP ?? 'true').toLowerCase() !== 'false';
+/* Only return OTP in API response if EXPOSE_OTP is explicitly set to 'true'. */
+const EXPOSE_OTP = process.env.EXPOSE_OTP === 'true';
 
 /* The cap is a brute-force control, so production keeps a strict ceiling
    even when the env var says otherwise. */
