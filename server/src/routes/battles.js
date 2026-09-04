@@ -60,7 +60,14 @@ router.get('/', optionalAuth, async (req, res) => {
 
 /* GET /api/battles/mine */
 router.get('/mine', requireAuth, async (req, res) => {
-  const rows = await fetchBattles({ $or: [{ creator_id: req.user.id }, { acceptor_id: req.user.id }] }, 200);
+  const match = { $or: [{ creator_id: req.user.id }, { acceptor_id: req.user.id }] };
+  if (req.query.active === 'true') {
+    match.status = { $in: ['open', 'requested', 'waiting', 'running', 'disputed'] };
+  } else if (req.query.status) {
+    match.status = req.query.status;
+  }
+  const limit = Math.min(Number(req.query.limit) || (req.query.active === 'true' ? 20 : 50), 200);
+  const rows = await fetchBattles(match, limit);
   res.json({ battles: rows.map(b => shape(b, req.user.id)) });
 });
 

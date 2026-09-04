@@ -42,7 +42,7 @@
 <link rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Saira+Semi+Condensed:wght@600;700&display=swap">
 <link rel="stylesheet" href="assets/css/app.css">
-<script>window.KHELBRO_API = "https://ludo-qu3q.onrender.com"; window.KHELBRO_BUILD = "84061be86c1d";
+<script>window.KHELBRO_API = "https://ludo-qu3q.onrender.com"; window.KHELBRO_BUILD = "2c450d3f914a";
 // Runs before paint so the theme never flashes.
 (function(){try{var t=localStorage.getItem('khelbro.theme')||
 (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
@@ -214,6 +214,11 @@ var l=localStorage.getItem('khelbro.lang');if(l)document.documentElement.lang=l;
           <img src="assets/img/icon-running.svg" alt="" width="20" height="20" class="h-5 w-5">
           <span class="section-title ml-2">My Battles</span>
           <span class="ml-auto text-[11.25px] font-bold uppercase text-muted" id="mine-count"></span>
+        </div>
+
+        <div id="mine-skeleton" class="space-y-2" aria-hidden="true">
+          <div class="skeleton h-10 w-full rounded-[5px]"></div>
+          <div class="skeleton h-10 w-full rounded-[5px]"></div>
         </div>
 
         <!-- Scrolls on its own so the page never scrolls sideways on a phone. -->

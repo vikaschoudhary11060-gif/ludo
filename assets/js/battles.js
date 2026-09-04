@@ -27,8 +27,8 @@
   /* Gated on the token, the same condition refresh() uses, so a signed-out
      visitor still issues nothing. */
   const listMine    = Api.isLoggedIn()
-    ? warm(() => Api.battles.mine())
-    : () => Api.battles.mine();
+    ? warm(() => Api.battles.mine({ active: true }))
+    : () => Api.battles.mine({ active: true });
 
   const avatar = (name, tint) =>
     `<span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full ${tint} text-[11px] font-bold text-white"
@@ -356,6 +356,9 @@
     section.hidden = !signedIn;
     if (!signedIn) return;
 
+    const sk = $('#mine-skeleton');
+    if (sk) sk.remove();
+
     $('#mine-rows').innerHTML = mine.map(mineRow).join('');
     $('#mine-wrap').hidden = mine.length === 0;
     $('#mine-empty').hidden = mine.length > 0;
@@ -370,7 +373,17 @@
     renderMine();
   }
 
+  let inFlight = false;
+  let queuedReload = false;
+
   async function load() {
+    if (inFlight) {
+      queuedReload = true;
+      return;
+    }
+    inFlight = true;
+    queuedReload = false;
+
     try {
       /* `mine` is not filtered by mode: a player wants every battle they are
          in, not only the ones matching the tab they happen to be looking at.
@@ -390,36 +403,40 @@
       announceChanges(before, mine);
     } catch (e) {
       toast(e.message, 'error');
+    } finally {
+      inFlight = false;
+      if (queuedReload) {
+        queuedReload = false;
+        setTimeout(load, 500);
+      }
     }
   }
 
   /* Lobby events arrive in bursts — a battle being taken fires a removal and
-     an update back to back, and the bots add their own churn. Each one used to
-     trigger three API calls immediately, so coalesce them into one refetch
-     shortly after the last event rather than one per event. */
+     an update back to back, and the bots add their own churn. Coalesce them
+     into one refetch shortly after the last event. */
   let reloadTimer = null;
   function reloadSoon() {
     clearTimeout(reloadTimer);
-    reloadTimer = setTimeout(() => { reloadTimer = null; load(); }, 400);
+    reloadTimer = setTimeout(() => { reloadTimer = null; load(); }, 500);
   }
 
-  /* A refresh on a timer as well as on socket events. The lobby is where a
-     host waits for an opponent, and a socket frame that never arrives — a
-     dropped connection, a sleeping phone, a server that does not emit it —
-     would mean no alert at all. Only while signed in and only while the tab
-     is visible: there is nobody to alert otherwise. */
+  /* A refresh on a timer as well as on socket events.
+     Uses chained timeout so a next poll NEVER overlaps with a pending request! */
   let pollTimer = null;
-  function startPolling(everyMs = 10000) {
-    clearInterval(pollTimer);
-    pollTimer = setInterval(() => {
-      if (document.hidden || !K.state.user) return;
-      load();
+  function startPolling(everyMs = 15000) {
+    clearTimeout(pollTimer);
+    pollTimer = setTimeout(async () => {
+      if (!document.hidden && K.state.user) {
+        await load();
+      }
+      startPolling(everyMs);
     }, everyMs);
-    // Returning to the tab is exactly when a missed change matters.
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && K.state.user) load();
-    });
   }
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && K.state.user) load();
+  });
 
   const showError = msg => {
     const el = $('#amount-err');
@@ -628,7 +645,7 @@
 
     window.addEventListener('beforeunload', () => {
       clearTimeout(reloadTimer);
-      clearInterval(pollTimer);
+      clearTimeout(pollTimer);
       window.KhelbroAlert?.stop();
     });
 

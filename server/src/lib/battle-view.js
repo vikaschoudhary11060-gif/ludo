@@ -31,17 +31,40 @@ export function shape(b, viewerId = null) {
   };
 }
 
-/* Fetch battles with creator/acceptor names joined in. */
+/* Fetch battles with creator/acceptor names joined in efficiently. */
 export async function fetchBattles(match, limit = 100) {
-  return col('battles').aggregate([
-    { $match: match },
-    { $sort: { created_at: -1 } },
-    { $limit: limit },
-    { $lookup: { from: 'users', localField: 'creator_id', foreignField: 'id', as: 'c' } },
-    { $lookup: { from: 'users', localField: 'acceptor_id', foreignField: 'id', as: 'a' } },
-    { $addFields: { creator_name: { $arrayElemAt: ['$c.name', 0] }, acceptor_name: { $arrayElemAt: ['$a.name', 0] } } },
-    { $project: { c: 0, a: 0, _id: 0 } },
-  ]).toArray();
+  const rows = await col('battles')
+    .find(match, { projection: { _id: 0 } })
+    .sort({ created_at: -1 })
+    .limit(limit)
+    .toArray();
+
+  if (!rows.length) return [];
+
+  const uids = new Set();
+  for (const b of rows) {
+    if (b.creator_id != null) uids.add(b.creator_id);
+    if (b.acceptor_id != null) uids.add(b.acceptor_id);
+  }
+
+  if (uids.size > 0) {
+    const userDocs = await col('users').find(
+      { id: { $in: Array.from(uids) } },
+      { projection: { _id: 0, id: 1, name: 1 } }
+    ).toArray();
+    const nameMap = new Map(userDocs.map(u => [u.id, u.name]));
+    for (const b of rows) {
+      b.creator_name = nameMap.get(b.creator_id) || null;
+      b.acceptor_name = nameMap.get(b.acceptor_id) || null;
+    }
+  } else {
+    for (const b of rows) {
+      b.creator_name = null;
+      b.acceptor_name = null;
+    }
+  }
+
+  return rows;
 }
 export async function fetchBattle(id) {
   const [b] = await fetchBattles({ id }, 1);
